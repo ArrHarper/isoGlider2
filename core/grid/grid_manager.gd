@@ -450,12 +450,24 @@ func generate_pois():
 	if player_quadrant >= 0:
 		available_quadrants.erase(player_quadrant)
 	
+	print("Player in quadrant ", player_quadrant, ", available quadrants: ", available_quadrants)
+	
+	# Track how many POIs we've successfully created
+	var pois_created = 0
+	
+	# Calculate tiles per quadrant (approximate)
+	var tiles_per_quadrant = (grid_size_x * grid_size_y) / 4
+	
 	# Assign POIs to different quadrants
 	for i in range(min(poi_count, available_quadrants.size())):
+		if pois_created >= poi_count:
+			break
+			
 		var quadrant = available_quadrants[i]
-		var max_attempts = 20 # Prevent infinite loops
+		var max_attempts = tiles_per_quadrant # Try up to the number of tiles in a quadrant
 		var attempts = 0
 		var position = null
+		var success = false
 		
 		# Try to find valid position in this quadrant
 		while attempts < max_attempts:
@@ -467,15 +479,17 @@ func generate_pois():
 				continue
 				
 			if is_position_valid(position, poi_positions) and position != player_pos:
+				success = true
 				break
 			attempts += 1
 		
-		if attempts == max_attempts:
+		if success:
+			# Create and add POI to this position
+			create_poi_at_position(position)
+			pois_created += 1
+			print("Created POI at position ", position, " in quadrant ", quadrant)
+		else:
 			print("Warning: Could not find valid position in quadrant ", quadrant)
-			continue
-		
-		# Create and add POI to this position
-		create_poi_at_position(position)
 	
 	# If we didn't generate enough POIs from quadrants, fill in with random positions
 	if poi_positions.size() < poi_count:
@@ -484,7 +498,11 @@ func generate_pois():
 		generate_pois_random(remaining)
 	
 	print("POI generation complete. Created ", poi_positions.size(), " POIs")
-	emit_signal("poi_generated", poi_positions)
+	if has_node("/root/SignalManager"):
+		var signal_manager = get_node("/root/SignalManager")
+		signal_manager.emit_signal("poi_generated", poi_positions)
+	else:
+		push_warning("SignalManager not found. POI generation signal not emitted.")
 
 # Generate POIs with a simple random distribution
 func generate_pois_random(count: int = 0):
@@ -495,7 +513,7 @@ func generate_pois_random(count: int = 0):
 	
 	# Target number of POIs to generate
 	var target_count = min(count, grid_size_x * grid_size_y - poi_positions.size())
-	var max_attempts = target_count * 10 # Limit attempts to avoid infinite loops
+	var max_attempts = grid_size_x * grid_size_y # Try up to the total number of grid tiles
 	var attempts = 0
 	
 	# Generate more POIs until we reach the target count
@@ -512,11 +530,22 @@ func generate_pois_random(count: int = 0):
 		# Check minimum distance requirement
 		if is_position_valid(pos, poi_positions):
 			create_poi_at_position(pos)
+			print("Created POI at position ", pos)
+		else:
+			print("Position ", pos, " is invalid due to minimum distance requirement")
 		
 		attempts += 1
 	
+	# Log a warning if we couldn't create all POIs
+	if poi_positions.size() < target_count:
+		push_warning("Could only create %d POIs out of %d requested - try reducing min_poi_distance or increasing grid size." % [poi_positions.size(), target_count])
+	
 	print("Random POI generation complete. Created ", poi_positions.size(), " POIs")
-	emit_signal("poi_generated", poi_positions)
+	if has_node("/root/SignalManager"):
+		var signal_manager = get_node("/root/SignalManager")
+		signal_manager.emit_signal("poi_generated", poi_positions)
+	else:
+		push_warning("SignalManager not found. POI generation signal not emitted.")
 
 # Create a POI at the given position
 func create_poi_at_position(pos: Vector2):
@@ -526,18 +555,20 @@ func create_poi_at_position(pos: Vector2):
 	
 	# Add to scene
 	add_child(poi_instance)
+
+	# Grid manager handles position and registration
+	poi_instance.grid_position = pos
+	poi_instance.position = grid_to_screen(pos)
+	register_grid_object(poi_instance, pos)
 	
-	# Make sure it's properly owned
-	if get_tree() and get_tree().edited_scene_root:
-		poi_instance.owner = get_tree().edited_scene_root
-	
-	# Set grid position and register
-	poi_instance.setup(self, pos)
-	
-	# Add to our tracking
+	# Connect to visual state changes
+	poi_instance.connect("visual_state_changed", Callable(self, "_on_object_visual_changed"))
 	poi_positions.append(pos)
-	
 	return poi_instance
+
+func _on_object_visual_changed(object):
+	# Re-register to update visuals when state changes
+	register_grid_object(object, object.grid_position)
 
 # Register a grid object with the grid
 func register_grid_object(object, grid_pos: Vector2) -> bool:

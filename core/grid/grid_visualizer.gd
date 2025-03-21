@@ -66,6 +66,9 @@ func _ready():
 	SignalManager.connect_signal("grid_hover_exited", self, "_on_grid_mouse_exit")
 	SignalManager.connect_signal("grid_tile_clicked", self, "_on_grid_tile_clicked")
 	SignalManager.connect_signal("path_calculated", self, "_on_path_calculated")
+	
+	# Connect to poi_generated signal using SignalManager
+	SignalManager.connect_signal("poi_generated", self, "_on_poi_generated")
 
 func _setup_layers():
 	# Clean up any existing layers first
@@ -232,10 +235,12 @@ func _remove_highlight(id: String) -> void:
 # Handler for POI generation signal
 func _on_poi_generated(positions):
 	print("Grid Visualizer: POIs generated at positions: ", positions)
-	# Refresh all POI visuals
+	
+	# Force refresh of all visuals
 	for pos in positions:
+		_clear_position_visuals(pos) # Clear any existing visuals first
 		update_grid_position(pos)
-
+		
 # Update tile visualization with POI object
 func update_grid_position(grid_pos: Vector2) -> void:
 	# Clear existing visuals
@@ -244,8 +249,11 @@ func update_grid_position(grid_pos: Vector2) -> void:
 	# Get the object directly from grid_manager
 	var object = grid_manager.get_grid_object_reference(grid_pos)
 	if not object or not is_instance_valid(object):
+		print("Grid Visualizer: No valid object at position ", grid_pos)
 		return
 		
+	print("Grid Visualizer: Found object of type ", object.object_type, " at position ", grid_pos)
+	
 	# Get visual properties directly from the object
 	if object.has_method("get_visual_properties"):
 		var props = object.get_visual_properties()
@@ -262,6 +270,9 @@ func update_grid_position(grid_pos: Vector2) -> void:
 		
 		if props.has("shape") and props.has("shape_points") and props.has("shape_color"):
 			_update_tile_shape(grid_pos, props)
+			print("Grid Visualizer: Created shape for ", grid_pos, " of type ", props["shape"])
+		else:
+			print("Grid Visualizer: Missing shape properties for ", grid_pos)
 
 # Update tile visualization with custom shape
 func _update_tile_shape(grid_pos: Vector2, object_data) -> void:
@@ -289,7 +300,18 @@ func _update_tile_shape(grid_pos: Vector2, object_data) -> void:
 			var polygon = Polygon2D.new()
 			polygon.polygon = props["shape_points"]
 			polygon.color = props["shape_color"]
-			polygon.position = grid_manager.grid_to_screen(grid_pos)
+			
+			# Get base position from grid position
+			var base_position = grid_manager.grid_to_screen(grid_pos)
+			
+			# Apply offsets if available
+			if props.has("horizontal_offset") or props.has("vertical_offset"):
+				var h_offset = props.get("horizontal_offset", 0.0)
+				var v_offset = props.get("vertical_offset", 0.0)
+				polygon.position = base_position + Vector2(h_offset, v_offset)
+			else:
+				polygon.position = base_position
+				
 			object_layer.add_child(polygon)
 			shape_polygons[grid_pos] = polygon
 

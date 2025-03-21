@@ -13,6 +13,7 @@ signal grid_tile_clicked(grid_pos)
 signal grid_object_added(object_type, grid_pos)
 signal grid_object_removed(object_type, grid_pos)
 signal grid_object_updated(object_type, grid_pos)
+signal poi_generated(positions)
 
 signal grid_hovered(grid_position)
 signal grid_hover_exited()
