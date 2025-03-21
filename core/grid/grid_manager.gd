@@ -65,34 +65,6 @@ var grid_to_chess_friendly = true # Flag to determine if grid coordinates should
 var grid_visualizer: Node2D
 var poi_positions = [] # Track POI positions
 
-# These signals are not used in the current implementation, but are kept here for future reference.
-
-# ## Emitted when player completes a movement to a new grid position
-# ## @param grid_position: Vector2 representing the grid coordinates the player moved to
-# signal player_moved(grid_position)
-
-# ## Emitted when mouse hovers over a grid position
-# ## @param grid_position: Vector2 representing the grid coordinates being hovered over
-# signal grid_mouse_hover(grid_position)
-
-# ## Emitted when mouse exits the grid
-# signal grid_mouse_exit
-
-# ## Emitted with the player's starting tile in chess notation
-# ## @param starting_tile: String representing chess notation (e.g. "H8")
-# signal player_starting_tile(starting_tile)
-
-# ## Emitted with the player's movement range
-# ## @param movement_range: int representing how many tiles the player can move
-# signal player_movement_range(movement_range)
-
-# ## Emitted when a player movement path is calculated
-# ## @param path_tiles: Array of Vector2 representing each tile in the path including start and destination
-# signal player_path_calculated(path_tiles)
-
-# ## Emitted when player wins a round by returning to starting position
-# signal round_won
-
 signal grid_mouse_hover(grid_pos)
 signal grid_mouse_exit
 signal grid_tile_clicked(grid_pos)
@@ -106,6 +78,11 @@ class GridObjectData:
 	var disable_fog: bool
 	
 	func get_visual_properties() -> Dictionary:
+		# First check if the object has its own visual properties
+		if object and object.has_method("get_visual_properties"):
+			return object.get_visual_properties()
+		
+		# Otherwise return stored visual properties
 		return visual_properties
 
 var grid_objects = {} # Dictionary keyed by grid position storing GridObjectData objects
@@ -306,14 +283,33 @@ func add_grid_object(object, grid_pos: Vector2, type: String = "", visual_props:
 
 # Get object at grid position
 func get_grid_object(grid_pos: Vector2):
-	# For backward compatibility, in case any existing code relies on the old behavior
-	var data = grid_objects.get(grid_pos)
-	return data if data else null
+	# Return the GridObjectData object
+	return grid_objects.get(grid_pos)
 
-# Get the actual object at a grid position
+# Get the actual object reference at a grid position
 func get_grid_object_reference(grid_pos: Vector2):
 	var data = grid_objects.get(grid_pos)
 	return data.object if data else null
+
+# Get visual properties for an object at given position
+func get_grid_object_visual_properties(grid_pos: Vector2) -> Dictionary:
+	var data = grid_objects.get(grid_pos)
+	if not data:
+		return {}
+		
+	# If GridObjectData has visual properties, use those methods
+	if data.has_method("get_visual_properties"):
+		return data.get_visual_properties()
+	
+	# Otherwise, try to get properties from the object itself
+	if data.object and data.object.has_method("get_visual_properties"):
+		return data.object.get_visual_properties()
+	
+	# Fallback to returning the stored visual_properties dictionary
+	if data.get("visual_properties"):
+		return data.visual_properties
+		
+	return {}
 
 # Remove object from grid
 func remove_grid_object(grid_pos: Vector2) -> void:
@@ -524,19 +520,9 @@ func generate_pois_random(count: int = 0):
 
 # Create a POI at the given position
 func create_poi_at_position(pos: Vector2):
-	# Create POI instance
-	var poi_instance = POI.new()
-	
-	# Set random shape
-	var shapes = ["square", "diamond", "triangle", "gem"]
-	var shape = shapes[randi() % shapes.size()]
-	poi_instance.set_shape(shape)
-	
-	# Set random value
-	poi_instance.value = randi_range(10, 100)
-	
-	# Set grid position 
-	poi_instance.grid_position = pos
+	# Create POI instance using the factory method
+	var poi_instance = load("res://core/objects/poi.gd").new()
+	poi_instance.randomize_properties() # Call a method to randomize instead of static factory
 	
 	# Add to scene
 	add_child(poi_instance)
@@ -545,8 +531,8 @@ func create_poi_at_position(pos: Vector2):
 	if get_tree() and get_tree().edited_scene_root:
 		poi_instance.owner = get_tree().edited_scene_root
 	
-	# Register with grid
-	register_grid_object(poi_instance, pos)
+	# Set grid position and register
+	poi_instance.setup(self, pos)
 	
 	# Add to our tracking
 	poi_positions.append(pos)
@@ -556,20 +542,32 @@ func create_poi_at_position(pos: Vector2):
 # Register a grid object with the grid
 func register_grid_object(object, grid_pos: Vector2) -> bool:
 	if is_valid_grid_position(grid_pos):
-		# If there's an existing object, use its type in our data
+		# Get the object type
 		var type = "generic"
 		if object.get("object_type"):
 			type = object.object_type
 		
-		# Get visual properties if object provides them
-		var visual_props = {}
-		var disable_fog = false
-		if object.has_method("get_visual_properties"):
-			visual_props = object.get_visual_properties()
-			if visual_props.has("disable_fog"):
-				disable_fog = visual_props["disable_fog"]
+		# Add to grid_objects dictionary without visual properties
+		var data = GridObjectData.new()
+		data.object = object
+		data.type = type
+		grid_objects[grid_pos] = data
 		
-		# Add to grid_objects dictionary
-		return add_grid_object(object, grid_pos, type, visual_props, disable_fog)
+		# Use the global SignalManager to emit the signal
+		if has_node("/root/SignalManager"):
+			var signal_manager = get_node("/root/SignalManager")
+			signal_manager.emit_signal("grid_object_added", type, grid_pos)
+		
+		return true
 	
 	return false
+
+func unregister_grid_object(grid_pos: Vector2) -> void:
+	if grid_objects.has(grid_pos):
+		var object_type = grid_objects[grid_pos].type
+		grid_objects.erase(grid_pos)
+		
+		# Use the global SignalManager to emit the signal
+		if has_node("/root/SignalManager"):
+			var signal_manager = get_node("/root/SignalManager")
+			signal_manager.emit_signal("grid_object_removed", object_type, grid_pos)

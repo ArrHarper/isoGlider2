@@ -102,3 +102,15 @@ func collect() -> int:
 		
 		return value
 	return 0
+
+# Replaces static create_random() with instance method
+func randomize_properties():
+	# Randomly select a shape
+	var shapes = ["square", "diamond", "triangle", "gem"]
+	var shape = shapes[randi() % shapes.size()]
+	set_shape(shape)
+	
+	# Set random value
+	value = randi_range(10, 100)
+	
+	return self

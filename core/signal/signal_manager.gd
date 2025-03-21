@@ -1,7 +1,6 @@
 # Signal Manager Autoload - defines all signals grouped by object type
 extends Node
 
-
 # Player-related signals
 signal player_moved(grid_position)
 signal player_movement_started(path)

@@ -60,16 +60,12 @@ func _ready():
 		call_deferred("_create_test_highlight")
 	
 	# Instead of depending on SignalManager, connect to grid_manager signals directly
-	if grid_manager.has_signal("grid_mouse_hover"):
-		grid_manager.connect("grid_mouse_hover", _on_grid_mouse_hover)
-	if grid_manager.has_signal("grid_mouse_exit"):
-		grid_manager.connect("grid_mouse_exit", _on_grid_mouse_exit)
-	if grid_manager.has_signal("grid_tile_clicked"):
-		grid_manager.connect("grid_tile_clicked", _on_grid_tile_clicked)
-	if grid_manager.has_signal("path_calculated"):
-		grid_manager.connect("path_calculated", _on_path_calculated)
-	if grid_manager.has_signal("poi_generated"):
-		grid_manager.connect("poi_generated", _on_poi_generated)
+	SignalManager.connect_signal("grid_object_added", self, "_on_grid_object_added")
+	SignalManager.connect_signal("grid_object_removed", self, "_on_grid_object_removed")
+	SignalManager.connect_signal("grid_hovered", self, "_on_grid_mouse_hover")
+	SignalManager.connect_signal("grid_hover_exited", self, "_on_grid_mouse_exit")
+	SignalManager.connect_signal("grid_tile_clicked", self, "_on_grid_tile_clicked")
+	SignalManager.connect_signal("path_calculated", self, "_on_path_calculated")
 
 func _setup_layers():
 	# Clean up any existing layers first
@@ -93,6 +89,14 @@ func _setup_layers():
 	fog_layer.z_index = 10
 	add_child(fog_layer)
 
+# Add handler for grid_object_added signal
+func _on_grid_object_added(object_type: String, grid_pos: Vector2):
+	update_grid_position(grid_pos)
+
+# Add handler for grid_object_removed signal
+func _on_grid_object_removed(object_type: String, grid_pos: Vector2):
+	_clear_position_visuals(grid_pos)
+
 # Create a test highlight to verify the system works
 func _create_test_highlight():
 	if not grid_manager:
@@ -109,6 +113,7 @@ func _clear_test_highlight():
 		_remove_highlight(test_highlight_id)
 		test_highlight_id = ""
 
+# MOUSE HANDLERS
 # Handler for grid_mouse_hover signal
 func _on_grid_mouse_hover(grid_pos: Vector2):
 	# Remove previous hover highlight if any
@@ -149,6 +154,7 @@ func _on_path_calculated(path: Array):
 		var id = "path_%d" % i
 		_add_highlight(pos, path_highlight_color, Color.TRANSPARENT, id)
 
+# GRID OBJECTS
 # Create a sprite for an object at the specified grid position
 func _create_sprite(grid_pos: Vector2, texture: Texture2D, modulate: Color = Color.WHITE) -> void:
 	# Remove any existing sprite at this position
@@ -232,29 +238,30 @@ func _on_poi_generated(positions):
 
 # Update tile visualization with POI object
 func update_grid_position(grid_pos: Vector2) -> void:
-	# Remove existing sprites/highlights at this position
+	# Clear existing visuals
 	_clear_position_visuals(grid_pos)
 	
-	# Get the object data at this position
-	var object_data = grid_manager.get_grid_object_data(grid_pos)
-	if not object_data:
+	# Get the object directly from grid_manager
+	var object = grid_manager.get_grid_object_reference(grid_pos)
+	if not object or not is_instance_valid(object):
 		return
-	
-	# Create sprite if needed
-	if object_data.visual_properties.has("sprite_texture") and object_data.visual_properties["sprite_texture"]:
-		_create_sprite(grid_pos, object_data.visual_properties["sprite_texture"], object_data.visual_properties["sprite_modulate"])
-	
-	# Create highlight if the color is set
-	if object_data.visual_properties.has("highlight_color") and object_data.visual_properties["highlight_color"] != Color.TRANSPARENT:
-		var border_color = Color.TRANSPARENT
-		if object_data.visual_properties.has("highlight_border_color"):
-			border_color = object_data.visual_properties["highlight_border_color"]
 		
-		_add_highlight(grid_pos, object_data.visual_properties["highlight_color"], border_color, "object_%s_%s" % [grid_pos.x, grid_pos.y])
-	
-	# Create shape polygon if the object has shape info
-	if object_data.visual_properties.has("shape") and object_data.visual_properties.has("shape_points") and object_data.visual_properties.has("shape_color"):
-		_update_tile_shape(grid_pos, object_data)
+	# Get visual properties directly from the object
+	if object.has_method("get_visual_properties"):
+		var props = object.get_visual_properties()
+		
+		# Apply visual properties
+		if props.has("sprite_texture") and props["sprite_texture"]:
+			_create_sprite(grid_pos, props["sprite_texture"],
+						  props.get("sprite_modulate", Color.WHITE))
+		
+		if props.has("highlight_color") and props["highlight_color"] != Color.TRANSPARENT:
+			var border_color = props.get("highlight_border_color", Color.TRANSPARENT)
+			_add_highlight(grid_pos, props["highlight_color"], border_color,
+						  "object_%s_%s" % [grid_pos.x, grid_pos.y])
+		
+		if props.has("shape") and props.has("shape_points") and props.has("shape_color"):
+			_update_tile_shape(grid_pos, props)
 
 # Update tile visualization with custom shape
 func _update_tile_shape(grid_pos: Vector2, object_data) -> void:
@@ -266,8 +273,17 @@ func _update_tile_shape(grid_pos: Vector2, object_data) -> void:
 		shape_polygons.erase(grid_pos)
 	
 	# If we have an object with shape properties
-	if object_data and object_data.visual_properties:
-		var props = object_data.visual_properties
+	if object_data:
+		var props = {}
+		
+		# Try to get visual properties from the object
+		if grid_manager.has_method("get_grid_object_visual_properties"):
+			props = grid_manager.get_grid_object_visual_properties(grid_pos)
+		elif object_data.has_method("get_visual_properties"):
+			props = object_data.get_visual_properties()
+		elif object_data.object and object_data.object.has_method("get_visual_properties"):
+			props = object_data.object.get_visual_properties()
+		
 		if props.has("shape") and props.has("shape_points") and props.has("shape_color"):
 			# Create a shape polygon for the object
 			var polygon = Polygon2D.new()

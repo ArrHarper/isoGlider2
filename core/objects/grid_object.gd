@@ -15,11 +15,11 @@ var sprite_modulate = Color.WHITE
 var disable_fog = false
 
 func _ready():
-	# Find grid manager in hierarchy
-	grid_manager = _find_grid_manager()
-	if grid_manager:
-		# Register with grid manager
-		register_with_grid()
+	# Only find grid manager and register if not already set up
+	if not grid_manager:
+		grid_manager = _find_grid_manager()
+		if grid_manager:
+			register_with_grid()
 
 func _find_grid_manager():
 	var parent = get_parent()
@@ -30,12 +30,25 @@ func _find_grid_manager():
 	return null
 
 func register_with_grid():
+	if not grid_manager:
+		push_error("Cannot register grid object - no grid manager found")
+		return false
+		
 	# Only register if we have a valid grid position
 	if grid_position != null and grid_position != Vector2(-1, -1) and grid_position != Vector2():
-		grid_manager.register_grid_object(self, grid_position)
-	else:
-		# Object has no valid grid position, don't register it
-		pass
+		return grid_manager.register_grid_object(self, grid_position)
+	
+	return false
+
+func setup(manager, position: Vector2):
+	grid_manager = manager
+	grid_position = position
+	
+	# Update visual position
+	if grid_manager:
+		position = grid_manager.grid_to_screen(grid_position)
+	
+	return register_with_grid()
 
 func unregister_from_grid():
 	if grid_manager:
