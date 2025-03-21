@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://baq72njpjobwt"]
+
+[ext_resource type="Script" uid="uid://bl314umsdggu7" path="res://core/grid/grid_visualizer.gd" id="1_o8god"]
+
+[node name="GridVisualizer" type="Node2D"]
+script = ExtResource("1_o8god")
+test_highlight_enabled = null

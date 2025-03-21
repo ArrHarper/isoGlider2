@@ -1,0 +1,6 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+implementation-plan.md
+intoTheBreachPostmortem.md
+RIPER-5.md

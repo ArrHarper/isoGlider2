@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3 uid="uid://r02yjt0o0fww"]
+
+[ext_resource type="PackedScene" uid="uid://cvxmex1fmgv0n" path="res://core/grid/grid_manager.tscn" id="1_xiose"]
+[ext_resource type="PackedScene" uid="uid://baq72njpjobwt" path="res://core/grid/grid_visualizer.tscn" id="2_r77kf"]
+
+[node name="Main" type="Node2D"]
+
+[node name="GridManager" parent="." instance=ExtResource("1_xiose")]
+grid_color = Color(0.832398, 0.986472, 1, 0.5)
+highlight_origin = false
+show_chess_coordinates = false
+
+[node name="GridVisualizer" parent="GridManager" instance=ExtResource("2_r77kf")]
