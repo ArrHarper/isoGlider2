@@ -1,13 +1,39 @@
-[gd_scene load_steps=3 format=3 uid="uid://r02yjt0o0fww"]
+[gd_scene load_steps=5 format=3 uid="uid://r02yjt0o0fww"]
 
 [ext_resource type="PackedScene" uid="uid://cvxmex1fmgv0n" path="res://core/grid/grid_manager.tscn" id="1_xiose"]
 [ext_resource type="PackedScene" uid="uid://baq72njpjobwt" path="res://core/grid/grid_visualizer.tscn" id="2_r77kf"]
+[ext_resource type="PackedScene" uid="uid://30ewy0diqmml" path="res://core/objects/grid_object.tscn" id="3_3gdo0"]
+[ext_resource type="Script" uid="uid://c1luq43arhy4o" path="res://core/ui/refresh_button.gd" id="6_w8gyu"]
 
 [node name="Main" type="Node2D"]
+
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -433.0
+offset_top = -263.0
+offset_right = 1152.0
+offset_bottom = 646.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 1)
 
 [node name="GridManager" parent="." instance=ExtResource("1_xiose")]
 grid_color = Color(0.832398, 0.986472, 1, 0.5)
 highlight_origin = false
 show_chess_coordinates = false
+poi_count = 3
+min_poi_distance = 3
 
 [node name="GridVisualizer" parent="GridManager" instance=ExtResource("2_r77kf")]
+
+[node name="GridObject" parent="." instance=ExtResource("3_3gdo0")]
+
+[node name="RefreshButton" type="Button" parent="."]
+offset_right = 100.0
+offset_bottom = 40.0
+text = "Refresh Map"
+script = ExtResource("6_w8gyu")
+
+[connection signal="pressed" from="RefreshButton" to="RefreshButton" method="_on_pressed"]

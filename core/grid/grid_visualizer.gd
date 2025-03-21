@@ -15,6 +15,10 @@ var hover_highlight_id = ""
 var path_highlight_id = ""
 var selection_highlight_id = ""
 
+# Visual tracking
+var object_sprites = {} # Dictionary keyed by grid position
+var shape_polygons = {} # Dictionary to track shape polygons
+
 # Visual configuration
 @export_category("Visual Settings")
 @export var default_highlight_color: Color = Color(0.5, 0.5, 0.5, 0.3)
@@ -64,6 +68,8 @@ func _ready():
 		grid_manager.connect("grid_tile_clicked", _on_grid_tile_clicked)
 	if grid_manager.has_signal("path_calculated"):
 		grid_manager.connect("path_calculated", _on_path_calculated)
+	if grid_manager.has_signal("poi_generated"):
+		grid_manager.connect("poi_generated", _on_poi_generated)
 
 func _setup_layers():
 	# Clean up any existing layers first
@@ -87,249 +93,212 @@ func _setup_layers():
 	fog_layer.z_index = 10
 	add_child(fog_layer)
 
+# Create a test highlight to verify the system works
 func _create_test_highlight():
-	if test_highlight_id != "":
-		remove_highlight(test_highlight_id)
-		
-	if not grid_manager or not grid_manager.has_method("grid_to_screen"):
+	if not grid_manager:
 		return
 		
-	test_highlight_id = add_highlight(Vector2(3, 3), "test", Color(1, 0, 0, 0.5))
+	# Create test highlight at grid center 
+	var test_pos = Vector2(int(grid_manager.grid_size_x / 2), int(grid_manager.grid_size_y / 2))
+	test_highlight_id = "test_highlight"
+	_add_highlight(test_pos, default_highlight_color, Color.RED, test_highlight_id)
 
+# Clear the test highlight
 func _clear_test_highlight():
-	if test_highlight_id != "":
-		remove_highlight(test_highlight_id)
+	if test_highlight_id:
+		_remove_highlight(test_highlight_id)
 		test_highlight_id = ""
 
-# Add a highlight to a specific tile with a given type
-func add_highlight(grid_pos: Vector2, type: String = "default",
-				   color: Color = Color.TRANSPARENT, border_color: Color = Color.TRANSPARENT) -> String:
-	# Skip if position is invalid or no grid manager
-	if not grid_manager or not grid_manager.has_method("is_valid_grid_position") or not grid_manager.is_valid_grid_position(grid_pos):
-		return ""
-	
-	# Ensure highlight layer exists
-	if not highlight_layer or not is_instance_valid(highlight_layer):
-		_setup_layers()
-		
-	# Determine colors based on type if not explicitly provided
-	if color == Color.TRANSPARENT:
-		match type:
-			"hover": color = hover_highlight_color
-			"selection": color = selection_highlight_color
-			"path": color = path_highlight_color
-			_: color = default_highlight_color
-	
-	if border_color == Color.TRANSPARENT:
-		border_color = Color(color.r, color.g, color.b, min(color.a + 0.3, 1.0))
-	
-	# Create unique ID for this highlight
-	var highlight_id = type + "_" + str(grid_pos.x) + "_" + str(grid_pos.y) + "_" + str(Time.get_ticks_msec())
-	
-	# Create the visual elements
-	var screen_pos = grid_manager.grid_to_screen(grid_pos)
-	var tile_width = grid_manager.tile_width
-	var tile_height = grid_manager.tile_height
-	
-	# Create diamond shape polygon
-	var points = [
-		Vector2(screen_pos.x, screen_pos.y - tile_height / 2), # Top
-		Vector2(screen_pos.x + tile_width / 2, screen_pos.y), # Right
-		Vector2(screen_pos.x, screen_pos.y + tile_height / 2), # Bottom
-		Vector2(screen_pos.x - tile_width / 2, screen_pos.y) # Left
-	]
-	
-	var polygon = Polygon2D.new()
-	polygon.polygon = points
-	polygon.color = color
-	highlight_layer.add_child(polygon)
-	
-	var outline = Line2D.new()
-	outline.points = points + [points[0]] # Close the shape
-	outline.width = 1.0
-	outline.default_color = border_color
-	highlight_layer.add_child(outline)
-	
-	# Store in active highlights
-	active_highlights[highlight_id] = {
-		"type": type,
-		"position": grid_pos,
-		"nodes": [polygon, outline]
-	}
-	
-	# For specific highlight types, track their IDs
-	match type:
-		"hover": hover_highlight_id = highlight_id
-		"selection": selection_highlight_id = highlight_id
-		"path":
-			# For paths, we might have multiple highlights with this type
-			if typeof(path_highlight_id) != TYPE_ARRAY:
-				path_highlight_id = []
-			path_highlight_id.append(highlight_id)
-	
-	return highlight_id
-
-# Remove a highlight by ID
-func remove_highlight(highlight_id: String) -> bool:
-	if active_highlights.has(highlight_id):
-		# Get the highlight info
-		var highlight = active_highlights[highlight_id]
-		
-		# Free the visual nodes
-		for node in highlight.nodes:
-			if is_instance_valid(node):
-				node.queue_free()
-		
-		# Remove from tracking
-		active_highlights.erase(highlight_id)
-		
-		# Update specific type tracking
-		match highlight.type:
-			"hover":
-				if hover_highlight_id == highlight_id:
-					hover_highlight_id = ""
-			"selection":
-				if selection_highlight_id == highlight_id:
-					selection_highlight_id = ""
-			"path":
-				if typeof(path_highlight_id) == TYPE_ARRAY and path_highlight_id.has(highlight_id):
-					path_highlight_id.erase(highlight_id)
-		
-		return true
-	
-	return false
-
-# Clear all highlights of a given type
-func clear_highlights_by_type(type: String) -> void:
-	var highlight_ids = active_highlights.keys()
-	for id in highlight_ids:
-		if active_highlights[id].type == type:
-			remove_highlight(id)
-
-func _on_grid_mouse_hover(grid_pos: Vector2) -> void:
-	# Clear any existing hover highlight
+# Handler for grid_mouse_hover signal
+func _on_grid_mouse_hover(grid_pos: Vector2):
+	# Remove previous hover highlight if any
 	if hover_highlight_id:
-		remove_highlight(hover_highlight_id)
-	
+		_remove_highlight(hover_highlight_id)
+		
 	# Add new hover highlight
-	hover_highlight_id = add_highlight(grid_pos, "hover")
+	hover_highlight_id = "hover"
+	_add_highlight(grid_pos, hover_highlight_color, Color.TRANSPARENT, hover_highlight_id)
 
-func _on_grid_mouse_exit() -> void:
-	# Clear hover highlight when mouse leaves grid
+# Handler for grid_mouse_exit signal
+func _on_grid_mouse_exit():
+	# Remove hover highlight
 	if hover_highlight_id:
-		remove_highlight(hover_highlight_id)
+		_remove_highlight(hover_highlight_id)
 		hover_highlight_id = ""
 
-func _on_grid_tile_clicked(grid_pos: Vector2) -> void:
-	print("Grid tile clicked: ", grid_pos)
-	
-	# Clear any existing selection highlight
+# Handler for grid_tile_clicked signal
+func _on_grid_tile_clicked(grid_pos: Vector2):
+	# Remove previous selection highlight if any
 	if selection_highlight_id:
-		remove_highlight(selection_highlight_id)
-	
+		_remove_highlight(selection_highlight_id)
+		
 	# Add new selection highlight
-	selection_highlight_id = add_highlight(grid_pos, "selection")
+	selection_highlight_id = "selection"
+	_add_highlight(grid_pos, selection_highlight_color, Color.GREEN, selection_highlight_id)
 
-func _on_path_calculated(path: Array) -> void:
-	# Clear any existing path highlights
-	clear_highlights_by_type("path")
+# Handler for path_calculated signal
+func _on_path_calculated(path: Array):
+	# Clear previous path highlight
+	if path_highlight_id:
+		_remove_highlight(path_highlight_id)
+		path_highlight_id = ""
 	
-	# Add new path highlights
-	path_highlight_id = []
-	for point in path:
-		if point != path[0]: # Skip the first point (current position)
-			var id = add_highlight(point, "path")
-			path_highlight_id.append(id)
+	# Create highlights for each tile in the path
+	for i in range(path.size()):
+		var pos = path[i]
+		var id = "path_%d" % i
+		_add_highlight(pos, path_highlight_color, Color.TRANSPARENT, id)
 
-# Highlight tiles within a specific range of a given position
-func highlight_range(center: Vector2, range_value: int, type: String = "range",
-					color: Color = Color(0.2, 0.6, 0.2, 0.2)) -> Array:
-	var highlight_ids = []
+# Create a sprite for an object at the specified grid position
+func _create_sprite(grid_pos: Vector2, texture: Texture2D, modulate: Color = Color.WHITE) -> void:
+	# Remove any existing sprite at this position
+	if object_sprites.has(grid_pos):
+		var old_sprite = object_sprites[grid_pos]
+		if is_instance_valid(old_sprite):
+			old_sprite.queue_free()
+		object_sprites.erase(grid_pos)
 	
-	# Generate positions within range
-	for x in range(-range_value, range_value + 1):
-		for y in range(-range_value, range_value + 1):
-			var pos = Vector2(center.x + x, center.y + y)
-			
-			# Skip the center position and make sure it's valid
-			if pos != center and grid_manager.is_valid_grid_position(pos):
-				# Calculate Manhattan distance
-				var distance = abs(center.x - pos.x) + abs(center.y - pos.y)
-				
-				# Only include if within range
-				if distance <= range_value:
-					var id = add_highlight(pos, type, color)
-					highlight_ids.append(id)
-	
-	return highlight_ids
+	# Create new sprite
+	var sprite = Sprite2D.new()
+	sprite.texture = texture
+	sprite.modulate = modulate
+	sprite.position = grid_manager.grid_to_screen(grid_pos)
+	object_layer.add_child(sprite)
+	object_sprites[grid_pos] = sprite
 
-# Highlight a path between two points
-func highlight_path(start: Vector2, end: Vector2, type: String = "path",
-				   color: Color = path_highlight_color) -> Array:
-	# Clear previous path highlights
-	clear_highlights_by_type(type)
+# Add a highlight to a grid position with specified colors and ID
+func _add_highlight(grid_pos: Vector2, color: Color, border_color: Color, id: String) -> void:
+	# Remove existing highlight with this ID if it exists
+	_remove_highlight(id)
 	
-	# Calculate a simple path between points
-	var path = []
+	# Get screen position for the grid position
+	var screen_pos = grid_manager.grid_to_screen(grid_pos)
 	
-	# Calculate differences
-	var dx = end.x - start.x
-	var dy = end.y - start.y
+	# Create highlight polygon
+	var polygon = Polygon2D.new()
 	
-	# For each step along the path
-	var steps = max(abs(dx), abs(dy))
-	if steps > 0:
-		for i in range(1, steps + 1):
-			var t = float(i) / steps
-			var x = start.x + dx * t
-			var y = start.y + dy * t
-			path.append(Vector2(round(x), round(y)))
+	# Create isometric tile shape
+	var iso_tile = []
+	var half_width = grid_manager.tile_width * 0.5
+	var half_height = grid_manager.tile_height * 0.5
 	
-	# Add highlights for each point in the path
-	var highlight_ids = []
-	for point in path:
-		if point != start: # Don't highlight the starting point
-			var id = add_highlight(point, type, color)
-			highlight_ids.append(id)
+	iso_tile.append(Vector2(0, -half_height)) # Top
+	iso_tile.append(Vector2(half_width, 0)) # Right
+	iso_tile.append(Vector2(0, half_height)) # Bottom
+	iso_tile.append(Vector2(-half_width, 0)) # Left
 	
-	return highlight_ids
+	polygon.polygon = PackedVector2Array(iso_tile)
+	polygon.color = color
+	polygon.position = screen_pos
+	highlight_layer.add_child(polygon)
+	
+	# If there's a border color, add a border
+	if border_color != Color.TRANSPARENT:
+		var line = Line2D.new()
+		line.points = PackedVector2Array(iso_tile + [iso_tile[0]]) # Close the loop
+		line.width = 1.5
+		line.default_color = border_color
+		line.position = screen_pos
+		highlight_layer.add_child(line)
+		
+		# Store both polygon and line in active highlights
+		active_highlights[id] = {"polygon": polygon, "line": line, "position": grid_pos}
+	else:
+		# Store just the polygon in active highlights
+		active_highlights[id] = {"polygon": polygon, "line": null, "position": grid_pos}
 
-# Apply a theme to all highlights (useful for dynamic visual changes)
-func apply_highlight_theme(theme_name: String) -> void:
-	match theme_name:
-		"default":
-			default_highlight_color = Color(0.5, 0.5, 0.5, 0.3)
-			hover_highlight_color = Color(0.7, 0.7, 0.7, 0.5)
-			selection_highlight_color = Color(0.2, 0.8, 0.2, 0.5)
-			path_highlight_color = Color(0.2, 0.6, 0.8, 0.4)
-		"dark":
-			default_highlight_color = Color(0.2, 0.2, 0.2, 0.4)
-			hover_highlight_color = Color(0.3, 0.3, 0.3, 0.6)
-			selection_highlight_color = Color(0.1, 0.4, 0.1, 0.6)
-			path_highlight_color = Color(0.1, 0.3, 0.4, 0.5)
-		# Add more themes as needed
-	
-	# Update active highlights with new colors
-	_refresh_highlight_colors()
-
-# Refresh colors of all active highlights
-func _refresh_highlight_colors() -> void:
-	for id in active_highlights:
+# Remove a highlight by ID
+func _remove_highlight(id: String) -> void:
+	if active_highlights.has(id):
 		var highlight = active_highlights[id]
-		var color
 		
-		# Get appropriate color based on type
-		match highlight.type:
-			"hover": color = hover_highlight_color
-			"selection": color = selection_highlight_color
-			"path": color = path_highlight_color
-			_: color = default_highlight_color
+		# Remove polygon
+		if highlight.has("polygon") and is_instance_valid(highlight["polygon"]):
+			highlight["polygon"].queue_free()
+			
+		# Remove line if it exists
+		if highlight.has("line") and is_instance_valid(highlight["line"]):
+			highlight["line"].queue_free()
+			
+		# Remove from tracking dictionary
+		active_highlights.erase(id)
+
+# Handler for POI generation signal
+func _on_poi_generated(positions):
+	print("Grid Visualizer: POIs generated at positions: ", positions)
+	# Refresh all POI visuals
+	for pos in positions:
+		update_grid_position(pos)
+
+# Update tile visualization with POI object
+func update_grid_position(grid_pos: Vector2) -> void:
+	# Remove existing sprites/highlights at this position
+	_clear_position_visuals(grid_pos)
+	
+	# Get the object data at this position
+	var object_data = grid_manager.get_grid_object_data(grid_pos)
+	if not object_data:
+		return
+	
+	# Create sprite if needed
+	if object_data.visual_properties.has("sprite_texture") and object_data.visual_properties["sprite_texture"]:
+		_create_sprite(grid_pos, object_data.visual_properties["sprite_texture"], object_data.visual_properties["sprite_modulate"])
+	
+	# Create highlight if the color is set
+	if object_data.visual_properties.has("highlight_color") and object_data.visual_properties["highlight_color"] != Color.TRANSPARENT:
+		var border_color = Color.TRANSPARENT
+		if object_data.visual_properties.has("highlight_border_color"):
+			border_color = object_data.visual_properties["highlight_border_color"]
 		
-		# Update polygon color
-		if highlight.nodes.size() > 0 and is_instance_valid(highlight.nodes[0]):
-			highlight.nodes[0].color = color
-		
-		# Update border color
-		if highlight.nodes.size() > 1 and is_instance_valid(highlight.nodes[1]):
-			var border_color = Color(color.r, color.g, color.b, min(color.a + 0.3, 1.0))
-			highlight.nodes[1].default_color = border_color
+		_add_highlight(grid_pos, object_data.visual_properties["highlight_color"], border_color, "object_%s_%s" % [grid_pos.x, grid_pos.y])
+	
+	# Create shape polygon if the object has shape info
+	if object_data.visual_properties.has("shape") and object_data.visual_properties.has("shape_points") and object_data.visual_properties.has("shape_color"):
+		_update_tile_shape(grid_pos, object_data)
+
+# Update tile visualization with custom shape
+func _update_tile_shape(grid_pos: Vector2, object_data) -> void:
+	# Clear any existing shape at this position
+	if shape_polygons.has(grid_pos):
+		var old_shape = shape_polygons[grid_pos]
+		if is_instance_valid(old_shape):
+			old_shape.queue_free()
+		shape_polygons.erase(grid_pos)
+	
+	# If we have an object with shape properties
+	if object_data and object_data.visual_properties:
+		var props = object_data.visual_properties
+		if props.has("shape") and props.has("shape_points") and props.has("shape_color"):
+			# Create a shape polygon for the object
+			var polygon = Polygon2D.new()
+			polygon.polygon = props["shape_points"]
+			polygon.color = props["shape_color"]
+			polygon.position = grid_manager.grid_to_screen(grid_pos)
+			object_layer.add_child(polygon)
+			shape_polygons[grid_pos] = polygon
+
+# Clear all visuals at a specific grid position
+func _clear_position_visuals(grid_pos: Vector2) -> void:
+	# Remove highlight if it exists
+	var highlight_id = "object_%s_%s" % [grid_pos.x, grid_pos.y]
+	_remove_highlight(highlight_id)
+	
+	# Remove sprite if it exists
+	if object_sprites.has(grid_pos):
+		var sprite = object_sprites[grid_pos]
+		if is_instance_valid(sprite):
+			sprite.queue_free()
+		object_sprites.erase(grid_pos)
+	
+	# Remove shape if it exists
+	if shape_polygons.has(grid_pos):
+		var shape = shape_polygons[grid_pos]
+		if is_instance_valid(shape):
+			shape.queue_free()
+		shape_polygons.erase(grid_pos)
+
+func refresh_all_visuals() -> void:
+	for y in range(grid_manager.grid_size_y):
+		for x in range(grid_manager.grid_size_x):
+			var grid_pos = Vector2(x, y)
+			update_grid_position(grid_pos)
