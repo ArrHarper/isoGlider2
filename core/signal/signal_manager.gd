@@ -6,6 +6,7 @@ signal player_moved(grid_position)
 signal player_movement_started(path)
 signal player_movement_completed()
 signal player_collected_poi(poi_id, reward)
+signal player_state_changed(player_id, state, is_on_starting_tile)
 
 # Grid Signals
 signal grid_initialized()

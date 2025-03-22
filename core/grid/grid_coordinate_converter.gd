@@ -39,7 +39,7 @@ func grid_to_chess(grid_pos: Vector2) -> String:
 		return ""
 	
 	var chess_col = char(65 + int(grid_pos.x)) # A, B, C, etc.
-	var chess_row = grid_manager.grid_size_y - int(grid_pos.y) # 8, 7, 6, etc. (chess has row 1 at bottom)
+	var chess_row = int(grid_pos.y) + 1 # 1, 2, 3, etc. (matching grid y-coordinate)
 	return "%s%d" % [chess_col, chess_row]
 
 # Convert chess notation (A1, B2, etc.) to grid coordinates
@@ -51,7 +51,7 @@ func chess_to_grid(chess_pos: String) -> Vector2:
 	var row = int(chess_pos.substr(1))
 	
 	var grid_x = col
-	var grid_y = grid_manager.grid_size_y - row
+	var grid_y = row - 1
 	
 	if is_valid_grid_position(Vector2(grid_x, grid_y)):
 		return Vector2(grid_x, grid_y)

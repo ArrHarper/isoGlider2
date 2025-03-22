@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://dikrrtwcu1s6g"]
+
+[node name="ExtractionEffect" type="Node2D"]
+
+[node name="Line2D" type="Line2D" parent="."]
+points = PackedVector2Array(64, -152, 96, -168, 128, -152, 96, -136, 64, -152)
+width = 1.0
+default_color = Color(0.109804, 0.823529, 0.603922, 0.866667)
+
+[node name="Line2D2" type="Line2D" parent="."]
+position = Vector2(0, -8)
+points = PackedVector2Array(64, -152, 96, -168, 128, -152, 96, -136, 64, -152)
+width = 1.0
+default_color = Color(0.109804, 0.823529, 0.603922, 0.866667)
+
+[node name="Line2D3" type="Line2D" parent="."]
+position = Vector2(0, -16)
+points = PackedVector2Array(64, -152, 96, -168, 128, -152, 96, -136, 64, -152)
+width = 1.0
+default_color = Color(0.109804, 0.823529, 0.603922, 0.866667)

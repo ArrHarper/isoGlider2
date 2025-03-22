@@ -1,9 +1,10 @@
-[gd_scene load_steps=10 format=3 uid="uid://r1vmovccjdnn"]
+[gd_scene load_steps=11 format=3 uid="uid://r1vmovccjdnn"]
 
 [ext_resource type="FontFile" uid="uid://ccrie74qu8sgs" path="res://abduction2002.ttf" id="1_kw4xl"]
 [ext_resource type="Script" uid="uid://g1hur3yk3bpe" path="res://ui/start_menu.gd" id="1_m8bj0"]
 [ext_resource type="AudioStream" uid="uid://cgao6dkq7xiyk" path="res://Newer-Wave.ogg" id="3_lb6g3"]
 [ext_resource type="Script" uid="uid://temm2s5ty0wj" path="res://ui/start_muzak.gd" id="4_fl3bm"]
+[ext_resource type="PackedScene" uid="uid://dikrrtwcu1s6g" path="res://ui/extraction_effect.tscn" id="5_fl3bm"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_6gq7i"]
 bg_color = Color(0.537255, 0.654902, 0.654902, 0.823529)
@@ -52,7 +53,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 1)
 
-[node name="PanelContainer" type="PanelContainer" parent="."]
+[node name="TitleAndButtons" type="PanelContainer" parent="."]
 custom_minimum_size = Vector2(540, 100)
 layout_mode = 1
 anchors_preset = -1
@@ -67,33 +68,33 @@ grow_horizontal = 2
 grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_6gq7i")
 
-[node name="MarginContainer" type="MarginContainer" parent="PanelContainer"]
+[node name="MarginContainer" type="MarginContainer" parent="TitleAndButtons"]
 layout_mode = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="PanelContainer/MarginContainer"]
+[node name="HBoxContainer" type="HBoxContainer" parent="TitleAndButtons/MarginContainer"]
 layout_mode = 2
 size_flags_horizontal = 4
 alignment = 1
 
-[node name="MarginContainer" type="MarginContainer" parent="PanelContainer/MarginContainer/HBoxContainer"]
+[node name="MarginContainer" type="MarginContainer" parent="TitleAndButtons/MarginContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 
-[node name="VBoxContainer" type="VBoxContainer" parent="PanelContainer/MarginContainer/HBoxContainer/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="TitleAndButtons/MarginContainer/HBoxContainer/MarginContainer"]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="PanelContainer/MarginContainer/HBoxContainer/MarginContainer/VBoxContainer"]
+[node name="Label" type="Label" parent="TitleAndButtons/MarginContainer/HBoxContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
 size_flags_vertical = 2
 text = "ISO GLIDER"
 label_settings = SubResource("LabelSettings_iuit4")
 horizontal_alignment = 1
 
-[node name="VBoxContainer2" type="VBoxContainer" parent="PanelContainer/MarginContainer/HBoxContainer/MarginContainer/VBoxContainer"]
+[node name="VBoxContainer2" type="VBoxContainer" parent="TitleAndButtons/MarginContainer/HBoxContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
 
-[node name="NormalMode" type="Button" parent="PanelContainer/MarginContainer/HBoxContainer/MarginContainer/VBoxContainer/VBoxContainer2"]
+[node name="NormalMode" type="Button" parent="TitleAndButtons/MarginContainer/HBoxContainer/MarginContainer/VBoxContainer/VBoxContainer2"]
 layout_mode = 2
 theme_override_colors/font_hover_color = Color(0.737255, 0.929412, 0.0352941, 1)
 theme_override_colors/font_color = Color(0.737255, 0.929412, 0.0352941, 1)
@@ -102,7 +103,7 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_loyqk")
 theme_override_styles/normal = SubResource("StyleBoxFlat_lb6g3")
 text = "NORMAL"
 
-[node name="TimedMode" type="Button" parent="PanelContainer/MarginContainer/HBoxContainer/MarginContainer/VBoxContainer/VBoxContainer2"]
+[node name="TimedMode" type="Button" parent="TitleAndButtons/MarginContainer/HBoxContainer/MarginContainer/VBoxContainer/VBoxContainer2"]
 layout_mode = 2
 theme_override_colors/font_hover_color = Color(0.737255, 0.929412, 0.0352941, 1)
 theme_override_colors/font_color = Color(0.737255, 0.929412, 0.0352941, 1)
@@ -114,3 +115,5 @@ text = "TIME TRIAL"
 [node name="StartMuzak" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("3_lb6g3")
 script = ExtResource("4_fl3bm")
+
+[node name="ExtractionEffect" parent="." instance=ExtResource("5_fl3bm")]

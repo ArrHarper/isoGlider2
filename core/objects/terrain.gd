@@ -31,6 +31,10 @@ func _init():
 func _ready():
     super._ready()
 
+# Method to check if terrain is passable
+func get_is_passable() -> bool:
+    return is_passable
+
 func get_visual_properties() -> Dictionary:
     var props = super.get_visual_properties()
     

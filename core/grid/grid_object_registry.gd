@@ -71,6 +71,17 @@ func generate_grid_objects():
 
 # Clear all existing generated objects
 func clear_existing_objects():
+	# First explicitly check for player and handle it separately
+	if grid_manager.player_instance and is_instance_valid(grid_manager.player_instance):
+		print("Clearing existing player instance from registry")
+		var player_pos = grid_manager.player_instance.grid_position
+		if grid_manager.grid_objects.has(player_pos):
+			grid_manager.grid_objects.erase(player_pos)
+			# Update visualizer for this position
+			if grid_manager.grid_visualizer:
+				grid_manager.grid_visualizer.update_grid_position(player_pos)
+		# Don't free the instance here - we'll let add_player_to_grid handle that
+		
 	# Clear objects by type from the registry
 	for type_id in object_positions.keys():
 		for pos in object_positions[type_id]:

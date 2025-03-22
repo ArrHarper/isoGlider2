@@ -28,6 +28,10 @@ var shape_polygons = {} # Dictionary to track shape polygons
 @export var hover_highlight_color: Color = Color(0.7, 0.7, 0.7, 0.5)
 @export var selection_highlight_color: Color = Color(0.2, 0.8, 0.2, 0.5)
 @export var path_highlight_color: Color = Color(0.2, 0.6, 0.8, 0.4)
+@export var starting_tile_color: Color = Color(0, 0.8, 0, 0.3)
+@export var starting_tile_border_color: Color = Color(0, 0.8, 0, 0.7)
+@export var starting_tile_immobilized_color: Color = Color(0.9, 0.9, 0, 0.4)
+@export var starting_tile_immobilized_border_color: Color = Color(0.9, 0.9, 0, 0.8)
 @export var test_highlight_enabled: bool = true:
 	set(value):
 		test_highlight_enabled = value
@@ -37,44 +41,49 @@ var shape_polygons = {} # Dictionary to track shape polygons
 			_clear_test_highlight()
 
 var test_highlight_id = ""
+var starting_tile_highlight_id = "starting_tile"
 
 func _ready():
-	print("GridVisualizer initialized")
-	
 	# Create layers in both editor and runtime
 	_setup_layers()
 	
-	if Engine.is_editor_hint():
-		# In editor, get parent reference and create test highlight if enabled
-		grid_manager = get_parent()
-		if grid_manager and grid_manager.has_method("grid_to_screen") and test_highlight_enabled:
-			call_deferred("_create_test_highlight")
-		return
-		
-	# Runtime setup
+	# Get references
 	grid_manager = get_parent()
 	
-	if not grid_manager or not grid_manager.has_method("grid_to_screen"):
-		push_error("GridVisualizer must be a child of GridManager!")
+	if !grid_manager or !grid_manager.has_method("grid_to_screen"):
+		push_error("GridVisualizer: Parent is not a valid GridManager!")
 		return
+		
+	# Connect all signals from the grid manager and signal manager
+	print("GridVisualizer: Connecting signals in _ready()")
 	
-	# Manual test - add a highlight to see if it appears
-	if test_highlight_enabled:
-		call_deferred("_create_test_highlight")
+	# Connect essential signals DIRECTLY from GridManager first
+	# This ensures signals are connected regardless of SignalManager
+	if grid_manager and grid_manager.has_signal("starting_tile_added"):
+		print("GridVisualizer: Directly connecting to GridManager starting_tile_added")
+		if !grid_manager.is_connected("starting_tile_added", Callable(self, "_on_starting_tile_added")):
+			grid_manager.connect("starting_tile_added", Callable(self, "_on_starting_tile_added"))
 	
-	# Instead of depending on SignalManager, connect to grid_manager signals directly
-	SignalManager.connect_signal("grid_object_added", self, "_on_grid_object_added")
-	SignalManager.connect_signal("grid_object_removed", self, "_on_grid_object_removed")
-	SignalManager.connect_signal("grid_hovered", self, "_on_grid_mouse_hover")
-	SignalManager.connect_signal("grid_hover_exited", self, "_on_grid_mouse_exit")
-	SignalManager.connect_signal("grid_tile_clicked", self, "_on_grid_tile_clicked")
-	SignalManager.connect_signal("path_calculated", self, "_on_path_calculated")
+	# Use SignalManager for connections
+	var signal_manager = get_node_or_null("/root/SignalManager")
+	if signal_manager:
+		print("GridVisualizer: Found SignalManager")
+		
+		# Connect signals
+		SignalManager.connect_signal("grid_object_added", self, "_on_grid_object_added")
+		SignalManager.connect_signal("grid_object_removed", self, "_on_grid_object_removed")
+		SignalManager.connect_signal("grid_hovered", self, "_on_grid_hovered")
+		SignalManager.connect_signal("grid_hover_exited", self, "_on_grid_hover_exited")
+		SignalManager.connect_signal("grid_tile_clicked", self, "_on_grid_tile_clicked")
+		SignalManager.connect_signal("path_calculated", self, "_on_path_calculated")
+		SignalManager.connect_signal("poi_generated", self, "_on_poi_generated")
+		SignalManager.connect_signal("starting_tile_added", self, "_on_starting_tile_added")
+		SignalManager.connect_signal("player_state_changed", self, "_on_player_state_changed")
+	else:
+		push_error("GridVisualizer: SignalManager not found!")
 	
-	# Connect to poi_generated signal using SignalManager
-	SignalManager.connect_signal("poi_generated", self, "_on_poi_generated")
-	
-	# Connect to starting_tile_added signal
-	SignalManager.connect_signal("starting_tile_added", self, "_on_starting_tile_added")
+	# Debug
+	print("GridVisualizer initialized. Waiting for starting_tile_added signal.")
 
 func _setup_layers():
 	# Clean up any existing layers first
@@ -109,6 +118,10 @@ func _on_grid_object_added(object_type: String, grid_pos: Vector2):
 # Add handler for grid_object_removed signal
 func _on_grid_object_removed(object_type: String, grid_pos: Vector2):
 	_clear_position_visuals(grid_pos)
+	
+	# Re-apply starting tile highlight if this was the starting position
+	if grid_pos == starting_tile_position:
+		update_starting_tile_highlight()
 
 # Create a test highlight to verify the system works
 func _create_test_highlight():
@@ -164,8 +177,13 @@ func _on_path_calculated(path: Array):
 	# Create highlights for each tile in the path
 	for i in range(path.size()):
 		var pos = path[i]
-		var id = "path_%d" % i
-		_add_highlight(pos, path_highlight_color, Color.TRANSPARENT, id)
+		
+		# Verify this tile is passable through the grid manager before highlighting
+		if grid_manager.has_method("is_tile_passable") and grid_manager.is_tile_passable(pos):
+			var id = "path_%d" % i
+			_add_highlight(pos, path_highlight_color, Color.TRANSPARENT, id)
+		else:
+			print("Not highlighting impassable tile at path position: ", pos)
 
 # GRID OBJECTS
 # Create a sprite for an object at the specified grid position
@@ -270,23 +288,23 @@ func update_grid_position(grid_pos: Vector2) -> void:
 	# Clear existing visuals
 	_clear_position_visuals(grid_pos)
 	
+	# Special case for starting tile - always keep its highlight
+	if grid_pos == starting_tile_position:
+		update_starting_tile_highlight()
+	
 	# Get the object directly from grid_manager
 	var object = grid_manager.get_grid_object(grid_pos, true)
 	if not object or not is_instance_valid(object):
-		# print("Grid Visualizer: No valid object at position ", grid_pos)
+		return
+	
+	# Skip visual creation for player objects since they're now instantiated as scenes
+	if object.object_type == "player":
+		print("GridVisualizer: Skipping player visualization at ", grid_pos)
 		return
 		
-	# print("Grid Visualizer: Found object of type ", object.object_type, " at position ", grid_pos)
-	
 	# Get visual properties directly from the object
 	if object.has_method("get_visual_properties"):
 		var props = object.get_visual_properties()
-		
-		# Check if this is a player on the starting tile
-		if object.object_type == "player" and grid_pos == starting_tile_position:
-			# Override the highlight color to green for player on starting tile
-			props["highlight_color"] = Color(0, 0.8, 0, 0.7).darkened(0.2) # Green with some transparency
-			props["highlight_border_color"] = Color(0, 0.8, 0, 0.7) # Green border for starting tile
 		
 		# Apply visual properties
 		if props.has("sprite_texture") and props["sprite_texture"]:
@@ -300,7 +318,6 @@ func update_grid_position(grid_pos: Vector2) -> void:
 		
 		if props.has("shape") and props.has("shape_points") and props.has("shape_color"):
 			_update_tile_shape(grid_pos, props)
-			# print("Grid Visualizer: Created shape for ", grid_pos, " of type ", props["shape"])
 		else:
 			print("Grid Visualizer: Missing shape properties for ", grid_pos)
 
@@ -372,21 +389,85 @@ func refresh_all_visuals() -> void:
 			update_grid_position(grid_pos)
 
 # Handler for starting_tile_added signal
-func _on_starting_tile_added(grid_pos: Vector2):
-	print("GridVisualizer: Starting tile set at position: ", grid_pos)
+func _on_starting_tile_added(grid_pos: Vector2) -> void:
+	print("GridVisualizer: _on_starting_tile_added called with position: ", grid_pos)
+	
+	# Clear any existing starting tile visuals
+	if starting_tile_position != Vector2(-1, -1):
+		print("GridVisualizer: Clearing existing starting tile visuals at: ", starting_tile_position)
+		_clear_position_visuals(starting_tile_position)
+		if starting_tile_highlight_id != "":
+			_remove_highlight(starting_tile_highlight_id)
+			starting_tile_highlight_id = ""
+	
+	# Set the new starting tile position
 	starting_tile_position = grid_pos
 	
-	# Force check for player at this position
-	var object = grid_manager.get_grid_object(grid_pos, true)
-	if object and is_instance_valid(object) and object.object_type == "player":
-		print("GridVisualizer: Player already on starting tile - applying green highlight")
-		# Force refresh just this position
-		_clear_position_visuals(grid_pos)
-		update_grid_position(grid_pos)
+	# Add highlight for the starting tile
+	update_starting_tile_highlight()
+	
+	# Debug verification
+	if starting_tile_highlight_id.is_empty():
+		print("ERROR: starting_tile_highlight_id is empty after update!")
+		return
+		
+	if !active_highlights.has(starting_tile_highlight_id):
+		print("ERROR: highlight not found in active_highlights dictionary!")
+		
+		# Try to add it directly as a fallback
+		var color = starting_tile_color
+		var border_color = starting_tile_border_color
+		
+		# Check if we need to use immobilized colors
+		if grid_manager and grid_manager.player_instance and grid_manager.player_instance.has_method("get_player_state"):
+			var player_state = grid_manager.player_instance.get_player_state()
+			if player_state == "IMMOBILIZED":
+				color = starting_tile_immobilized_color
+				border_color = starting_tile_immobilized_border_color
+		
+		starting_tile_highlight_id = _add_highlight(starting_tile_position, color, border_color, "starting_tile")
+		print("GridVisualizer: Retry - Starting tile highlight created with ID: ", starting_tile_highlight_id)
 	else:
-		print("GridVisualizer: No player found at starting tile position yet")
-		# Still refresh all - player might be added later
-		refresh_all_visuals()
+		print("GridVisualizer: Starting tile highlight successfully created with ID: ", starting_tile_highlight_id)
+
+# Update the starting tile highlight based on current game state
+func update_starting_tile_highlight() -> void:
+	print("GridVisualizer: Updating starting tile highlight. Position: ", starting_tile_position)
+	
+	# Skip if no valid starting position is set
+	if starting_tile_position == Vector2(-1, -1):
+		print("GridVisualizer: No valid starting tile position set")
+		return
+	
+	# Clear any existing highlight first
+	if starting_tile_highlight_id != "":
+		print("GridVisualizer: Removing existing highlight with ID: ", starting_tile_highlight_id)
+		_remove_highlight(starting_tile_highlight_id)
+		starting_tile_highlight_id = ""
+	
+	# Determine colors based on player state
+	var color = starting_tile_color
+	var border_color = starting_tile_border_color
+	
+	# Check if player is in IMMOBILIZED state
+	if grid_manager and grid_manager.player_instance and grid_manager.player_instance.has_method("get_player_state"):
+		var player_state = grid_manager.player_instance.get_player_state()
+		print("GridVisualizer: Player state is: ", player_state)
+		if player_state == "IMMOBILIZED":
+			color = starting_tile_immobilized_color
+			border_color = starting_tile_immobilized_border_color
+	
+	# Add the highlight
+	starting_tile_highlight_id = _add_highlight(starting_tile_position, color, border_color, "starting_tile")
+	print("GridVisualizer: Updated starting tile highlight with ID: ", starting_tile_highlight_id)
+
+# Handler for player state changes to update starting tile highlight
+func _on_player_state_changed(player_id: int, state: String, is_on_starting_tile: bool):
+	print("GridVisualizer: Received player_state_changed signal. State: ", state)
+	
+	# Always update the starting tile highlight regardless of player position
+	# This ensures starting tile has appropriate highlighting in all cases
+	update_starting_tile_highlight()
 
 # Helper methods to access grid configuration
 func _get_grid_size_x() -> int:
@@ -422,3 +503,24 @@ func _create_iso_polygon(center: Vector2 = Vector2.ZERO, scale_factor: float = 1
 		iso_tile.append(Vector2(center.x - half_width, center.y)) # Left
 	
 	return PackedVector2Array(iso_tile)
+
+# Force set starting tile (can be called from other scripts)
+func force_set_starting_tile(grid_pos: Vector2) -> void:
+	print("GridVisualizer: Force setting starting tile at: ", grid_pos)
+	
+	# Clear any existing starting tile visuals
+	if starting_tile_position != Vector2(-1, -1):
+		_clear_position_visuals(starting_tile_position)
+		_remove_highlight(starting_tile_highlight_id)
+	
+	# Set the new starting tile position
+	starting_tile_position = grid_pos
+	
+	# Add highlight with default colors
+	update_starting_tile_highlight()
+	
+	# Verify highlight was created
+	if active_highlights.has(starting_tile_highlight_id):
+		print("GridVisualizer: Starting tile highlight successfully set through force function")
+	else:
+		print("GridVisualizer: Failed to add starting tile highlight through force function!")
