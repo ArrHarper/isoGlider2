@@ -3,7 +3,7 @@
 [ext_resource type="PackedScene" uid="uid://cvxmex1fmgv0n" path="res://core/grid/grid_manager.tscn" id="1_xiose"]
 [ext_resource type="PackedScene" uid="uid://baq72njpjobwt" path="res://core/grid/grid_visualizer.tscn" id="2_r77kf"]
 [ext_resource type="PackedScene" uid="uid://30ewy0diqmml" path="res://core/objects/grid_object.tscn" id="3_3gdo0"]
-[ext_resource type="Script" uid="uid://c1luq43arhy4o" path="res://core/ui/refresh_button.gd" id="6_w8gyu"]
+[ext_resource type="Script" uid="uid://c1luq43arhy4o" path="res://ui/refresh_button.gd" id="6_w8gyu"]
 
 [node name="Main" type="Node2D"]
 
@@ -11,10 +11,10 @@
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -433.0
-offset_top = -263.0
-offset_right = 1152.0
-offset_bottom = 646.0
+offset_left = -293.0
+offset_top = -150.0
+offset_right = 1292.0
+offset_bottom = 759.0
 grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 1)
@@ -25,13 +25,30 @@ highlight_origin = false
 show_chess_coordinates = false
 
 [node name="GridVisualizer" parent="GridManager" instance=ExtResource("2_r77kf")]
+test_highlight_enabled = false
 
 [node name="GridObject" parent="." instance=ExtResource("3_3gdo0")]
 
-[node name="RefreshButton" type="Button" parent="."]
-offset_right = 100.0
-offset_bottom = 40.0
-text = "Refresh Map"
+[node name="SimpleUI" type="CanvasLayer" parent="."]
+
+[node name="RefreshButton" type="Button" parent="SimpleUI"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -53.0
+offset_top = -40.0
+offset_right = 53.0
+grow_horizontal = 2
+grow_vertical = 0
+size_flags_vertical = 8
+text = "Refresh"
 script = ExtResource("6_w8gyu")
 
-[connection signal="pressed" from="RefreshButton" to="RefreshButton" method="_on_pressed"]
+[node name="PlayerShape" type="Polygon2D" parent="."]
+position = Vector2(32, -30)
+scale = Vector2(1.6, 1.35714)
+polygon = PackedVector2Array(-229, 119, -219, 119, -221, 112, -219, 105, -229, 105, -227, 112)
+
+[connection signal="pressed" from="SimpleUI/RefreshButton" to="SimpleUI/RefreshButton" method="_on_pressed"]

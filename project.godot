@@ -11,10 +11,18 @@ config_version=5
 [application]
 
 config/name="IsoMove2"
-run/main_scene="uid://r02yjt0o0fww"
+run/main_scene="uid://r1vmovccjdnn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
 SignalManager="*res://core/signal/signal_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/scale=1.5
+window/stretch/scale_mode="integer"

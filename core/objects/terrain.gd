@@ -3,13 +3,18 @@ class_name Terrain
 extends GridObject
 
 # Simple pyramid shape - use variable instead of constant for PackedVector2Array
-var PYRAMID_SHAPE = PackedVector2Array([Vector2(-10, 0), Vector2(0, -20), Vector2(10, 0), Vector2(0, 5)])
+# var PYRAMID_SHAPE = PackedVector2Array([Vector2(-10, 0), Vector2(0, -20), Vector2(10, 0), Vector2(0, 5)])
+# 2x size
+var PYRAMID_SHAPE = PackedVector2Array([Vector2(-20, 0), Vector2(0, -40), Vector2(20, 0), Vector2(0, 10)])
 
 # Terrain color
 const TERRAIN_COLOR = Color(0.6, 0.4, 0.2, 0.8) # Brownish
 
 var is_passable: bool = false
-var polygon: Polygon2D
+
+# Add offset properties similar to POI
+var horizontal_offset: float = 0.0
+var vertical_offset: float = 0.0
 
 func _init():
     object_type = "terrain"
@@ -25,32 +30,21 @@ func _init():
 
 func _ready():
     super._ready()
-    # Set up the polygon for editor visualization
-    _setup_preview_polygon()
-
-func _setup_preview_polygon():
-    if not is_inside_tree():
-        return
-        
-    # Remove existing polygon if needed
-    if polygon and is_instance_valid(polygon):
-        polygon.queue_free()
-        
-    # Create new polygon
-    polygon = Polygon2D.new()
-    polygon.polygon = PYRAMID_SHAPE
-    polygon.color = TERRAIN_COLOR
-    add_child(polygon)
-    
-    # Make sure polygon is owned by the scene in editor
-    if Engine.is_editor_hint() and get_tree().edited_scene_root:
-        polygon.owner = get_tree().edited_scene_root
 
 func get_visual_properties() -> Dictionary:
     var props = super.get_visual_properties()
     
     # Add shape information
+    props["shape"] = "pyramid" # Add a shape identifier similar to POI
     props["shape_points"] = PYRAMID_SHAPE
     props["shape_color"] = TERRAIN_COLOR
+    
+    # Add offset properties that grid_visualizer might be looking for
+    props["horizontal_offset"] = horizontal_offset
+    props["vertical_offset"] = vertical_offset
+    
+    # Add scale properties that grid_visualizer might be looking for
+    props["scale_x"] = 1.0
+    props["scale_y"] = 1.0
     
     return props

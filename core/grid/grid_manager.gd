@@ -47,10 +47,35 @@ extends Node2D
 	set(value):
 		show_chess_labels = value
 		queue_redraw()
+@export var enable_grid_glow: bool = false:
+	set(value):
+		enable_grid_glow = value
+		queue_redraw()
+@export var grid_glow_color: Color = Color(0.5, 0.5, 0.5, 0.5):
+	set(value):
+		grid_glow_color = value
+		queue_redraw()
+@export var grid_glow_width: float = 3.0:
+	set(value):
+		grid_glow_width = value
+		queue_redraw()
+@export var grid_glow_intensity: int = 3:
+	set(value):
+		grid_glow_intensity = max(1, value)
+		queue_redraw()
 
-@export_category("POI Generation")
+@export_category("Grid Object Generation")
 @export var poi_count: int = 3
+@export var terrain_count: int = 12
 @export var min_poi_distance: int = 3
+
+@export_category("Player Settings")
+@export var player_starting_tile: String = "A1":
+	set(value):
+		player_starting_tile = value
+		# # Update player position if already spawned in editor
+		# if Engine.is_editor_hint() and is_inside_tree():
+		# 	update_player_in_editor()
 
 var grid_tiles = [] # Array of tiles in the grid, stored as a 2D array of Vector2 positions
 var hover_grid_pos = Vector2(-1, -1) # Track which tile is being hovered
@@ -64,12 +89,14 @@ var impassable_tiles = [] # Array of Vector2 positions that cannot be moved to
 var grid_to_chess_friendly = true # Flag to determine if grid coordinates should be converted to chess notation
 var grid_visualizer: Node2D
 var poi_positions = [] # Track POI positions
+var terrain_positions = [] # Track terrain positions
 
 signal grid_mouse_hover(grid_pos)
 signal grid_mouse_exit
 signal grid_tile_clicked(grid_pos)
 signal path_calculated(path)
 signal poi_generated(positions)
+signal grid_objects_generated(object_counts)
 
 class GridObjectData:
 	var object
@@ -100,9 +127,9 @@ func _ready():
 		
 	center_grid_in_viewport()
 	
-	# Initialize POIs after a short delay to ensure everything is set up
+	# Initialize grid objects after a short delay to ensure everything is set up
 	if not Engine.is_editor_hint():
-		call_deferred("generate_pois")
+		call_deferred("generate_grid_objects")
 
 func _draw():
 	if show_grid_lines:
@@ -184,8 +211,22 @@ func draw_isometric_tile(grid_pos: Vector2):
 	points.append(Vector2(center.x, center.y + tile_height / 2)) # Bottom
 	points.append(Vector2(center.x - tile_width / 2, center.y)) # Left
 	
-	# Draw the outline
-	draw_polyline(points + [points[0]], grid_color, 1.0)
+	# Add closed loop
+	var closed_points = points + [points[0]]
+	
+	# Draw glow effect if enabled
+	if enable_grid_glow:
+		# Draw multiple lines with decreasing opacity and increasing width for glow effect
+		for i in range(grid_glow_intensity, 0, -1):
+			var scale_factor = float(i) / grid_glow_intensity
+			var glow_width = grid_glow_width * scale_factor
+			var glow_alpha = grid_glow_color.a * scale_factor
+			var current_glow_color = Color(grid_glow_color.r, grid_glow_color.g, grid_glow_color.b, glow_alpha)
+			
+			draw_polyline(closed_points, current_glow_color, glow_width)
+	
+	# Draw the main outline
+	draw_polyline(closed_points, grid_color, 1.0)
 
 func _input(event):
 	if Engine.is_editor_hint():
@@ -410,165 +451,180 @@ func get_random_position_in_quadrant(quadrant: int) -> Vector2:
 	
 	return Vector2(x, y)
 
-# Check if position is far enough from other POIs
-func is_position_valid(pos: Vector2, existing_positions: Array) -> bool:
+# Check if position is far enough from other positions based on min_distance
+func is_position_valid(pos: Vector2, existing_positions: Array, min_distance: int = min_poi_distance) -> bool:
 	for existing_pos in existing_positions:
 		var distance = abs(existing_pos.x - pos.x) + abs(existing_pos.y - pos.y) # Manhattan distance
-		if distance < min_poi_distance:
+		if distance < min_distance:
 			return false
 	return true
 
-# Generate POIs and place them on the grid
-func generate_pois():
-	print("Generating POIs...")
+# Create a grid object of the specified type at the given position
+func create_grid_object(object_type: String, pos: Vector2):
+	var instance = null
+	match object_type:
+		"poi":
+			instance = load("res://core/objects/poi.gd").new()
+			instance.randomize_properties()
+		"terrain":
+			instance = load("res://core/objects/terrain.gd").new()
+			# No need to randomize terrain properties as it has a fixed style
 	
-	# Clear existing POIs
-	for pos in poi_positions:
-		var poi_obj = get_grid_object_reference(pos)
-		if poi_obj and is_instance_valid(poi_obj):
-			poi_obj.queue_free()
-		remove_grid_object(pos)
-	poi_positions.clear()
-	
-	# Find player position if there is one
-	var player_pos = Vector2(-1, -1)
-	var player_quadrant = -1
-	
-	for pos in grid_objects.keys():
-		var obj_data = grid_objects[pos]
-		if obj_data and obj_data.type == "player":
-			player_pos = pos
-			player_quadrant = get_quadrant(player_pos)
-			break
-	
-	# If no player found, use a random distribution approach
-	if player_pos == Vector2(-1, -1):
-		return generate_pois_random()
-	
-	# Get available quadrants (all except player's)
-	var available_quadrants = [0, 1, 2, 3]
-	if player_quadrant >= 0:
-		available_quadrants.erase(player_quadrant)
-	
-	print("Player in quadrant ", player_quadrant, ", available quadrants: ", available_quadrants)
-	
-	# Track how many POIs we've successfully created
-	var pois_created = 0
-	
-	# Calculate tiles per quadrant (approximate)
-	var tiles_per_quadrant = (grid_size_x * grid_size_y) / 4
-	
-	# Assign POIs to different quadrants
-	for i in range(min(poi_count, available_quadrants.size())):
-		if pois_created >= poi_count:
-			break
-			
-		var quadrant = available_quadrants[i]
-		var max_attempts = tiles_per_quadrant # Try up to the number of tiles in a quadrant
-		var attempts = 0
-		var position = null
-		var success = false
+	if instance:
+		add_child(instance)
+		instance.grid_position = pos
+		instance.position = grid_to_screen(pos)
+		register_grid_object(instance, pos)
 		
-		# Try to find valid position in this quadrant
-		while attempts < max_attempts:
-			position = get_random_position_in_quadrant(quadrant)
-			# Double-check the position is in the expected quadrant
-			var actual_quadrant = get_quadrant(position)
-			if actual_quadrant != quadrant:
-				attempts += 1
-				continue
-				
-			if is_position_valid(position, poi_positions) and position != player_pos:
-				success = true
-				break
-			attempts += 1
-		
-		if success:
-			# Create and add POI to this position
-			create_poi_at_position(position)
-			pois_created += 1
-			print("Created POI at position ", position, " in quadrant ", quadrant)
-		else:
-			print("Warning: Could not find valid position in quadrant ", quadrant)
+		# Track position in type-specific arrays
+		if object_type == "poi":
+			poi_positions.append(pos)
+		elif object_type == "terrain":
+			terrain_positions.append(pos)
 	
-	# If we didn't generate enough POIs from quadrants, fill in with random positions
-	if poi_positions.size() < poi_count:
-		var remaining = poi_count - poi_positions.size()
-		print("Adding ", remaining, " additional random POIs")
-		generate_pois_random(remaining)
+	return instance
+
+# Player reference and management
+var player_instance = null
+
+# Create and add player to starting position
+func add_player_to_grid() -> Node:
+	# Convert chess notation to grid coordinates
+	var start_pos = chess_to_grid(player_starting_tile)
 	
-	print("POI generation complete. Created ", poi_positions.size(), " POIs")
+	if not is_valid_grid_position(start_pos):
+		push_error("Invalid player starting position: " + player_starting_tile)
+		# Fallback to a valid position
+		start_pos = Vector2(0, 0)
+		player_starting_tile = grid_to_chess(start_pos)
+	
+	# Emit signal that starting tile is established
+	if has_node("/root/SignalManager"):
+		print("Emitting starting_tile_added signal with position: ", start_pos)
+		var signal_manager = get_node("/root/SignalManager")
+		signal_manager.emit_signal("starting_tile_added", start_pos)
+	
+	# Create player instance
+	var player = load("res://core/objects/player.gd").new()
+	add_child(player)
+	
+	# Set position and register
+	player.grid_position = start_pos
+	player.position = grid_to_screen(start_pos)
+	
+	# Register with the grid system
+	register_grid_object(player, start_pos)
+	
+	# Store reference for easy access
+	player_instance = player
+	
+	# Emit signal that player was added
 	if has_node("/root/SignalManager"):
 		var signal_manager = get_node("/root/SignalManager")
-		signal_manager.emit_signal("poi_generated", poi_positions)
-	else:
-		push_warning("SignalManager not found. POI generation signal not emitted.")
-
-# Generate POIs with a simple random distribution
-func generate_pois_random(count: int = 0):
-	if count <= 0:
-		count = poi_count
-		
-	print("Generating ", count, " random POIs")
+		signal_manager.emit_signal("player_spawned", player, start_pos)
 	
-	# Target number of POIs to generate
-	var target_count = min(count, grid_size_x * grid_size_y - poi_positions.size())
-	var max_attempts = grid_size_x * grid_size_y # Try up to the total number of grid tiles
+	print("Player added at " + player_starting_tile + " (Grid: " + str(start_pos) + ")")
+	return player
+
+# Generate all grid objects (POIs and terrain)
+func generate_grid_objects():
+	print("Generating grid objects...")
+	
+	# Clear existing objects
+	clear_existing_objects()
+
+	# add player to grid
+	add_player_to_grid()
+	
+	# Generate POIs first (higher priority)
+	generate_objects_of_type("poi", poi_count)
+	
+	# Then generate terrain on remaining tiles
+	generate_objects_of_type("terrain", terrain_count)
+	
+	# Emit signal for all generated objects
+	if has_node("/root/SignalManager"):
+		var signal_manager = get_node("/root/SignalManager")
+		var object_counts = {
+			"poi": poi_positions.size(),
+			"terrain": terrain_positions.size()
+		}
+		signal_manager.emit_signal("grid_objects_generated", object_counts)
+	else:
+		push_warning("SignalManager not found. Grid objects generation signal not emitted.")
+	
+	print("Grid object generation complete. Created %d POIs and %d terrain objects" % [poi_positions.size(), terrain_positions.size()])
+
+# Clear all existing generated objects
+func clear_existing_objects():
+	# Clear POIs
+	for pos in poi_positions:
+		var obj = get_grid_object_reference(pos)
+		if obj and is_instance_valid(obj):
+			obj.queue_free()
+		remove_grid_object(pos)
+	
+	# Clear terrain
+	for pos in terrain_positions:
+		var obj = get_grid_object_reference(pos)
+		if obj and is_instance_valid(obj):
+			obj.queue_free()
+		remove_grid_object(pos)
+		
+	poi_positions.clear()
+	terrain_positions.clear()
+
+# Generate objects of a specific type
+func generate_objects_of_type(object_type: String, count: int):
+	print("Generating %d objects of type %s" % [count, object_type])
+	
+	# Get already occupied positions
+	var occupied_positions = []
+	for pos in grid_objects.keys():
+		occupied_positions.append(pos)
+	
+	var positions = []
+	var max_attempts = grid_size_x * grid_size_y
 	var attempts = 0
 	
-	# Generate more POIs until we reach the target count
-	while poi_positions.size() < target_count and attempts < max_attempts:
+	# Apply minimum distance constraint only for POIs
+	var min_distance = min_poi_distance if object_type == "poi" else 0
+	
+	while positions.size() < count and attempts < max_attempts:
 		var x = randi() % grid_size_x
 		var y = randi() % grid_size_y
 		var pos = Vector2(x, y)
 		
-		# Skip if there's already an object at this position
-		if grid_objects.has(pos):
+		# Skip if position is already occupied
+		if occupied_positions.has(pos):
 			attempts += 1
 			continue
 			
-		# Check minimum distance requirement
-		if is_position_valid(pos, poi_positions):
-			create_poi_at_position(pos)
-			print("Created POI at position ", pos)
-		else:
-			print("Position ", pos, " is invalid due to minimum distance requirement")
-		
+		# Check minimum distance requirement for POIs
+		if object_type == "poi" and min_distance > 0:
+			if not is_position_valid(pos, positions):
+				attempts += 1
+				continue
+				
+		# Create object at this position
+		var instance = create_grid_object(object_type, pos)
+		if instance:
+			positions.append(pos)
+			occupied_positions.append(pos)
+			
 		attempts += 1
 	
-	# Log a warning if we couldn't create all POIs
-	if poi_positions.size() < target_count:
-		push_warning("Could only create %d POIs out of %d requested - try reducing min_poi_distance or increasing grid size." % [poi_positions.size(), target_count])
-	
-	print("Random POI generation complete. Created ", poi_positions.size(), " POIs")
-	if has_node("/root/SignalManager"):
+	# Emit type-specific signal if needed
+	if object_type == "poi" and has_node("/root/SignalManager"):
 		var signal_manager = get_node("/root/SignalManager")
-		signal_manager.emit_signal("poi_generated", poi_positions)
-	else:
-		push_warning("SignalManager not found. POI generation signal not emitted.")
-
-# Create a POI at the given position
-func create_poi_at_position(pos: Vector2):
-	# Create POI instance using the factory method
-	var poi_instance = load("res://core/objects/poi.gd").new()
-	poi_instance.randomize_properties() # Call a method to randomize instead of static factory
-	
-	# Add to scene
-	add_child(poi_instance)
-
-	# Grid manager handles position and registration
-	poi_instance.grid_position = pos
-	poi_instance.position = grid_to_screen(pos)
-	register_grid_object(poi_instance, pos)
-	
-	# Connect to visual state changes
-	poi_instance.connect("visual_state_changed", Callable(self, "_on_object_visual_changed"))
-	poi_positions.append(pos)
-	return poi_instance
-
-func _on_object_visual_changed(object):
-	# Re-register to update visuals when state changes
-	register_grid_object(object, object.grid_position)
+		signal_manager.emit_signal("poi_generated", positions)
+		
+	# Log a warning if we couldn't create all objects
+	if positions.size() < count:
+		push_warning("Could only create %d %s out of %d requested - try reducing constraints or increasing grid size."
+			% [positions.size(), object_type, count])
+		
+	return positions
 
 # Register a grid object with the grid
 func register_grid_object(object, grid_pos: Vector2) -> bool:
@@ -602,3 +658,26 @@ func unregister_grid_object(grid_pos: Vector2) -> void:
 		if has_node("/root/SignalManager"):
 			var signal_manager = get_node("/root/SignalManager")
 			signal_manager.emit_signal("grid_object_removed", object_type, grid_pos)
+
+# The following functions are being kept for backward compatibility or future use
+# with quadrant-based positioning
+
+# Old functions that can be called by generate_grid_objects instead of the default random generation
+func generate_pois():
+	print("DEPRECATED: Use generate_grid_objects() instead")
+	generate_grid_objects()
+
+func generate_pois_random(count: int = 0):
+	print("DEPRECATED: Use generate_objects_of_type('poi', count) instead")
+	if count <= 0:
+		count = poi_count
+	generate_objects_of_type("poi", count)
+
+# Create a POI at the given position - kept for backward compatibility
+func create_poi_at_position(pos: Vector2):
+	print("DEPRECATED: Use create_grid_object('poi', pos) instead")
+	return create_grid_object("poi", pos)
+
+func _on_object_visual_changed(object):
+	# Re-register to update visuals when state changes
+	register_grid_object(object, object.grid_position)

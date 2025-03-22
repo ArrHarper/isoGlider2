@@ -16,24 +16,33 @@ enum ShapeType {SQUARE, TRIANGLE, GEM}
 # functions will automatically work with the new shape.
 
 # Shape definitions - use variable instead of constant for PackedVector2Array objects
+
+# this first set of shapes is 1x size
+# var SHAPES = {
+# 	"square": PackedVector2Array([Vector2(-8, -8), Vector2(8, -8), Vector2(8, 8), Vector2(-8, 8)]),
+# 	"triangle": PackedVector2Array([Vector2(-8, -8), Vector2(8, -8), Vector2(0, 8)]),
+# 	"gem": PackedVector2Array([Vector2(0, 0), Vector2(8, -16), Vector2(0, -24), Vector2(-8, -16)])
+# }
+
+# this second set of shapes is 2x size
 var SHAPES = {
-	"square": PackedVector2Array([Vector2(-8, -8), Vector2(8, -8), Vector2(8, 8), Vector2(-8, 8)]),
-	"triangle": PackedVector2Array([Vector2(-8, -8), Vector2(8, -8), Vector2(0, 8)]),
-	"gem": PackedVector2Array([Vector2(0, 0), Vector2(8, -16), Vector2(0, -24), Vector2(-8, -16)])
+	"square": PackedVector2Array([Vector2(-16, -16), Vector2(16, -16), Vector2(16, 16), Vector2(-16, 16)]),
+	"triangle": PackedVector2Array([Vector2(-16, -16), Vector2(16, -16), Vector2(0, 16)]),
+	"gem": PackedVector2Array([Vector2(0, 0), Vector2(16, -32), Vector2(0, -48), Vector2(-16, -32)])
 }
 
 # Shape colors - these can be constants since Color is a builtin type
 const SHAPE_COLORS = {
-	"square": Color(0, 0.8, 0, 0.7), # green
-	"gem": Color(0.0627451, 0.105882, 1, 0.7), # blue
-	"triangle": Color(1, 0.8, 0, 0.7) # yellow
+	"square": Color(0.686, 0.255, 0.541, 0.9), # purple
+	"gem": Color(0.447, 0.882, 0.82, 0.9), # blue
+	"triangle": Color(1.0, 0.737, 0.259, 1.0) # yellow
 }
 
 # Default offsets for each shape type (x, y). Negative values move the shape up and left.
 const SHAPE_OFFSETS = {
-	"square": Vector2(0, -5),
-	"triangle": Vector2(0, -5),
-	"gem": Vector2(0, -8)
+	"square": Vector2(0, -10),
+	"triangle": Vector2(0, -15),
+	"gem": Vector2(0, 0)
 }
 
 # Default scale factors for each shape type (x_scale, y_scale)
@@ -46,7 +55,6 @@ const SHAPE_SCALES = {
 var value: int = 50
 var collected: bool = false
 var shape_type: String = ""
-var polygon: Polygon2D
 
 # Offset properties for positioning along true x/y axes
 var horizontal_offset: float = 0.0
@@ -58,6 +66,9 @@ var scale_y: float = 1.0
 
 # Array of string keys matching enum order
 const SHAPE_KEYS = ["square", "triangle", "gem"]
+
+# Static counter to track which shape to generate next
+static var next_shape_index: int = 0
 
 # Helper function to convert enum to string key
 func shape_type_to_string(shape: ShapeType) -> String:
@@ -72,43 +83,6 @@ func _init():
 
 func _ready():
 	super._ready()
-	
-	# Only set up preview polygon in editor, not in-game
-	if Engine.is_editor_hint():
-		_setup_preview_polygon()
-
-func _setup_preview_polygon():
-	if not is_inside_tree():
-		return
-		
-	# Only run this in the editor, not at runtime
-	if not Engine.is_editor_hint():
-		return
-		
-	# Remove existing polygon if needed
-	if polygon and is_instance_valid(polygon):
-		polygon.queue_free()
-		
-	# Create new polygon
-	polygon = Polygon2D.new()
-	
-	# Apply scaling to the shape points
-	var scaled_points = []
-	for point in SHAPES[shape_type]:
-		var scaled_point = Vector2(point.x * scale_x, point.y * scale_y)
-		scaled_points.append(scaled_point)
-	
-	polygon.polygon = PackedVector2Array(scaled_points)
-	polygon.color = SHAPE_COLORS[shape_type]
-	
-	# Apply the offsets to the polygon's position
-	polygon.position = Vector2(horizontal_offset, vertical_offset)
-	
-	add_child(polygon)
-	
-	# Make sure polygon is owned by the scene in editor
-	if Engine.is_editor_hint() and get_tree().edited_scene_root:
-		polygon.owner = get_tree().edited_scene_root
 
 func set_shape(new_shape: ShapeType):
 	var shape_key = shape_type_to_string(new_shape)
@@ -141,17 +115,11 @@ func set_shape(new_shape: ShapeType):
 			# Default - no scaling
 			scale_x = 1.0
 			scale_y = 1.0
-		
-		# Update preview if possible
-		if is_inside_tree():
-			_setup_preview_polygon()
 
 # Set the scale factor for both dimensions (with a different name to avoid conflicts with Node2D.set_scale)
 func set_shape_scale(x_scale: float, y_scale: float) -> void:
 	scale_x = x_scale
 	scale_y = y_scale
-	if is_inside_tree():
-		_setup_preview_polygon()
 		
 # Uniformly scale both dimensions
 func set_uniform_shape_scale(scale: float) -> void:
@@ -195,11 +163,12 @@ func collect() -> int:
 
 # Replaces static create_random() with instance method
 func randomize_properties():
-	# Get the number of items in the enum
-	var shape_count = ShapeType.size()
-	# Generate a random value in the enum's range
-	var shape = randi() % shape_count
+	# Instead of random, cycle through each shape type
+	var shape = next_shape_index
 	set_shape(shape)
+	
+	# Increment counter and wrap around when we reach the end
+	next_shape_index = (next_shape_index + 1) % ShapeType.size()
 	
 	# Set random value
 	value = randi_range(10, 100)

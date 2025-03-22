@@ -4,6 +4,9 @@ extends Node2D
 # Reference to the grid manager
 var grid_manager: Node2D
 
+# Starting tile position
+var starting_tile_position: Vector2 = Vector2(-1, -1)
+
 # Layer handling
 var highlight_layer: Node2D
 var object_layer: Node2D
@@ -69,6 +72,9 @@ func _ready():
 	
 	# Connect to poi_generated signal using SignalManager
 	SignalManager.connect_signal("poi_generated", self, "_on_poi_generated")
+	
+	# Connect to starting_tile_added signal
+	SignalManager.connect_signal("starting_tile_added", self, "_on_starting_tile_added")
 
 func _setup_layers():
 	# Clean up any existing layers first
@@ -94,6 +100,10 @@ func _setup_layers():
 
 # Add handler for grid_object_added signal
 func _on_grid_object_added(object_type: String, grid_pos: Vector2):
+	# Special handling for player on starting tile 
+	if object_type == "player" and grid_pos == starting_tile_position:
+		print("GridVisualizer: Player added to starting tile position: ", grid_pos)
+	
 	update_grid_position(grid_pos)
 
 # Add handler for grid_object_removed signal
@@ -249,14 +259,20 @@ func update_grid_position(grid_pos: Vector2) -> void:
 	# Get the object directly from grid_manager
 	var object = grid_manager.get_grid_object_reference(grid_pos)
 	if not object or not is_instance_valid(object):
-		print("Grid Visualizer: No valid object at position ", grid_pos)
+		# print("Grid Visualizer: No valid object at position ", grid_pos)
 		return
 		
-	print("Grid Visualizer: Found object of type ", object.object_type, " at position ", grid_pos)
+	# print("Grid Visualizer: Found object of type ", object.object_type, " at position ", grid_pos)
 	
 	# Get visual properties directly from the object
 	if object.has_method("get_visual_properties"):
 		var props = object.get_visual_properties()
+		
+		# Check if this is a player on the starting tile
+		if object.object_type == "player" and grid_pos == starting_tile_position:
+			# Override the highlight color to green for player on starting tile
+			props["highlight_color"] = Color(0, 0.8, 0, 0.7).darkened(0.2) # Green with some transparency
+			props["highlight_border_color"] = Color(0, 0.8, 0, 0.7) # Green border for starting tile
 		
 		# Apply visual properties
 		if props.has("sprite_texture") and props["sprite_texture"]:
@@ -270,7 +286,7 @@ func update_grid_position(grid_pos: Vector2) -> void:
 		
 		if props.has("shape") and props.has("shape_points") and props.has("shape_color"):
 			_update_tile_shape(grid_pos, props)
-			print("Grid Visualizer: Created shape for ", grid_pos, " of type ", props["shape"])
+			# print("Grid Visualizer: Created shape for ", grid_pos, " of type ", props["shape"])
 		else:
 			print("Grid Visualizer: Missing shape properties for ", grid_pos)
 
@@ -340,3 +356,20 @@ func refresh_all_visuals() -> void:
 		for x in range(grid_manager.grid_size_x):
 			var grid_pos = Vector2(x, y)
 			update_grid_position(grid_pos)
+
+# Handler for starting_tile_added signal
+func _on_starting_tile_added(grid_pos: Vector2):
+	print("GridVisualizer: Starting tile set at position: ", grid_pos)
+	starting_tile_position = grid_pos
+	
+	# Force check for player at this position
+	var object = grid_manager.get_grid_object_reference(grid_pos)
+	if object and is_instance_valid(object) and object.object_type == "player":
+		print("GridVisualizer: Player already on starting tile - applying green highlight")
+		# Force refresh just this position
+		_clear_position_visuals(grid_pos)
+		update_grid_position(grid_pos)
+	else:
+		print("GridVisualizer: No player found at starting tile position yet")
+		# Still refresh all - player might be added later
+		refresh_all_visuals()

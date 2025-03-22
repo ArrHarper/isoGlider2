@@ -9,11 +9,14 @@ signal player_collected_poi(poi_id, reward)
 
 # Grid Signals
 signal grid_initialized()
+
 signal grid_tile_clicked(grid_pos)
 signal grid_object_added(object_type, grid_pos)
 signal grid_object_removed(object_type, grid_pos)
 signal grid_object_updated(object_type, grid_pos)
 signal poi_generated(positions)
+signal player_object_added(grid_pos)
+signal starting_tile_added(grid_pos)
 
 signal grid_hovered(grid_position)
 signal grid_hover_exited()
@@ -59,13 +62,16 @@ func connect_signal(signal_name: String, target: Object, method: String,
 		push_error("SignalManager: Trying to connect to non-existent signal: " + signal_name)
 		return ERR_DOES_NOT_EXIST
 		
-	if is_connected(signal_name, Callable(target, method)):
+	var callable_target = Callable(target, method)
+	if is_connected(signal_name, callable_target):
 		# Already connected, skip
 		return OK
 		
-	var result = connect(signal_name, Callable(target, method))
+	var result = connect(signal_name, callable_target)
 	if result != OK:
-		push_error("SignalManager: Failed to connect signal: " + signal_name)
+		push_error("SignalManager: Failed to connect signal: " + signal_name + " Error: " + str(result))
+	else:
+		print("Successfully connected signal: " + signal_name + " to " + target.get_name() + "." + method)
 	
 	# Track connection for debugging
 	if not _registered_listeners.has(signal_name):
@@ -77,7 +83,7 @@ func connect_signal(signal_name: String, target: Object, method: String,
 	
 	return result
 
-	# Helper method to disconnect a signal with error checking
+# Helper method to disconnect a signal with error checking
 func disconnect_signal(signal_name: String, target: Object, method: String) -> void:
 	if is_connected(signal_name, Callable(target, method)):
 		disconnect(signal_name, Callable(target, method))
