@@ -20,9 +20,6 @@ grow_vertical = 2
 color = Color(0, 0, 0, 1)
 
 [node name="GridManager" parent="." instance=ExtResource("1_xiose")]
-grid_color = Color(0.832398, 0.986472, 1, 0.5)
-highlight_origin = false
-show_chess_coordinates = false
 
 [node name="GridVisualizer" parent="GridManager" instance=ExtResource("2_r77kf")]
 test_highlight_enabled = false

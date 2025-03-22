@@ -1,7 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://r1vmovccjdnn"]
+[gd_scene load_steps=10 format=3 uid="uid://r1vmovccjdnn"]
 
 [ext_resource type="FontFile" uid="uid://ccrie74qu8sgs" path="res://abduction2002.ttf" id="1_kw4xl"]
-[ext_resource type="Script" path="res://ui/start_menu.gd" id="1_m8bj0"]
+[ext_resource type="Script" uid="uid://g1hur3yk3bpe" path="res://ui/start_menu.gd" id="1_m8bj0"]
+[ext_resource type="AudioStream" uid="uid://cgao6dkq7xiyk" path="res://Newer-Wave.ogg" id="3_lb6g3"]
+[ext_resource type="Script" uid="uid://temm2s5ty0wj" path="res://ui/start_muzak.gd" id="4_fl3bm"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_6gq7i"]
 bg_color = Color(0.537255, 0.654902, 0.654902, 0.823529)
@@ -110,3 +112,5 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_lb6g3")
 text = "TIME TRIAL"
 
 [node name="StartMuzak" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("3_lb6g3")
+script = ExtResource("4_fl3bm")

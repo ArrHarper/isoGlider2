@@ -42,7 +42,7 @@ func register_with_grid():
 		
 	# Only register if we have a valid grid position
 	if grid_position != null and grid_position != Vector2(-1, -1):
-		return grid_manager.register_grid_object(self, grid_position)
+		return grid_manager.add_grid_object(self, grid_position)
 	
 	return false
 
@@ -58,7 +58,7 @@ func setup(manager, position: Vector2):
 
 func unregister_from_grid():
 	if grid_manager:
-		grid_manager.unregister_grid_object(grid_position)
+		grid_manager.remove_grid_object(grid_position)
 
 func get_visual_properties() -> Dictionary:
 	return {
@@ -74,13 +74,13 @@ func get_visual_properties() -> Dictionary:
 func set_grid_position(new_pos: Vector2):
 	if grid_manager:
 		# Unregister from old position
-		grid_manager.unregister_grid_object(grid_position)
+		grid_manager.remove_grid_object(grid_position)
 		
 		# Update position
 		grid_position = new_pos
 		
 		# Register at new position
-		grid_manager.register_grid_object(self, grid_position)
+		grid_manager.add_grid_object(self, grid_position)
 		
 		# Update visual position
 		position = grid_manager.grid_to_screen(grid_position)

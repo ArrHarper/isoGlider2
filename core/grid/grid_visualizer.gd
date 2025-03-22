@@ -116,7 +116,7 @@ func _create_test_highlight():
 		return
 		
 	# Create test highlight at grid center 
-	var test_pos = Vector2(int(grid_manager.grid_size_x / 2), int(grid_manager.grid_size_y / 2))
+	var test_pos = Vector2(int(_get_grid_size_x() / 2), int(_get_grid_size_y() / 2))
 	test_highlight_id = "test_highlight"
 	_add_highlight(test_pos, default_highlight_color, Color.RED, test_highlight_id)
 
@@ -186,27 +186,32 @@ func _create_sprite(grid_pos: Vector2, texture: Texture2D, modulate: Color = Col
 	object_sprites[grid_pos] = sprite
 
 # Add a highlight to a grid position with specified colors and ID
-func _add_highlight(grid_pos: Vector2, color: Color, border_color: Color, id: String) -> void:
-	# Remove existing highlight with this ID if it exists
-	_remove_highlight(id)
+func _add_highlight(grid_pos: Vector2, color: Color, border_color: Color = Color.TRANSPARENT, id: String = "") -> String:
+	# Skip if already exists
+	if id != "" and active_highlights.has(id):
+		var highlight = active_highlights[id]
+		if highlight and is_instance_valid(highlight):
+			highlight.color = color
+			# Update border if it has one
+			for child in highlight.get_children():
+				if child is Line2D:
+					child.default_color = border_color
+			return id
 	
-	# Get screen position for the grid position
+	# Safety check
+	if not grid_manager:
+		return ""
+	
+	# Convert grid position to screen position
 	var screen_pos = grid_manager.grid_to_screen(grid_pos)
 	
-	# Create highlight polygon
+	# Create polygon node
 	var polygon = Polygon2D.new()
 	
-	# Create isometric tile shape
-	var iso_tile = []
-	var half_width = grid_manager.tile_width * 0.5
-	var half_height = grid_manager.tile_height * 0.5
+	# Create isometric tile shape (no position offset)
+	var iso_tile = _create_iso_polygon()
 	
-	iso_tile.append(Vector2(0, -half_height)) # Top
-	iso_tile.append(Vector2(half_width, 0)) # Right
-	iso_tile.append(Vector2(0, half_height)) # Bottom
-	iso_tile.append(Vector2(-half_width, 0)) # Left
-	
-	polygon.polygon = PackedVector2Array(iso_tile)
+	polygon.polygon = iso_tile
 	polygon.color = color
 	polygon.position = screen_pos
 	highlight_layer.add_child(polygon)
@@ -214,31 +219,40 @@ func _add_highlight(grid_pos: Vector2, color: Color, border_color: Color, id: St
 	# If there's a border color, add a border
 	if border_color != Color.TRANSPARENT:
 		var line = Line2D.new()
-		line.points = PackedVector2Array(iso_tile + [iso_tile[0]]) # Close the loop
+		
+		# Create a new array for Line2D points - we need to close the loop by including the first point again
+		var line_points = PackedVector2Array()
+		for point in iso_tile:
+			line_points.append(point)
+		line_points.append(iso_tile[0]) # Close the loop
+		
+		line.points = line_points
 		line.width = 1.5
 		line.default_color = border_color
-		line.position = screen_pos
-		highlight_layer.add_child(line)
-		
-		# Store both polygon and line in active highlights
-		active_highlights[id] = {"polygon": polygon, "line": line, "position": grid_pos}
-	else:
-		# Store just the polygon in active highlights
-		active_highlights[id] = {"polygon": polygon, "line": null, "position": grid_pos}
+		polygon.add_child(line)
+	
+	# If no ID was provided, generate one
+	if id == "":
+		id = "highlight_%d_%d" % [grid_pos.x, grid_pos.y]
+	
+	# Keep track of active highlights
+	active_highlights[id] = polygon
+	
+	# Store metadata for easy reference
+	polygon.set_meta("grid_pos", grid_pos)
+	polygon.set_meta("highlight_id", id)
+	
+	return id
 
 # Remove a highlight by ID
 func _remove_highlight(id: String) -> void:
 	if active_highlights.has(id):
 		var highlight = active_highlights[id]
 		
-		# Remove polygon
-		if highlight.has("polygon") and is_instance_valid(highlight["polygon"]):
-			highlight["polygon"].queue_free()
-			
-		# Remove line if it exists
-		if highlight.has("line") and is_instance_valid(highlight["line"]):
-			highlight["line"].queue_free()
-			
+		# Check if it's a valid Polygon2D and queue it for deletion
+		if highlight is Polygon2D and is_instance_valid(highlight):
+			highlight.queue_free()
+		
 		# Remove from tracking dictionary
 		active_highlights.erase(id)
 
@@ -257,7 +271,7 @@ func update_grid_position(grid_pos: Vector2) -> void:
 	_clear_position_visuals(grid_pos)
 	
 	# Get the object directly from grid_manager
-	var object = grid_manager.get_grid_object_reference(grid_pos)
+	var object = grid_manager.get_grid_object(grid_pos, true)
 	if not object or not is_instance_valid(object):
 		# print("Grid Visualizer: No valid object at position ", grid_pos)
 		return
@@ -352,8 +366,8 @@ func _clear_position_visuals(grid_pos: Vector2) -> void:
 		shape_polygons.erase(grid_pos)
 
 func refresh_all_visuals() -> void:
-	for y in range(grid_manager.grid_size_y):
-		for x in range(grid_manager.grid_size_x):
+	for y in range(_get_grid_size_y()):
+		for x in range(_get_grid_size_x()):
 			var grid_pos = Vector2(x, y)
 			update_grid_position(grid_pos)
 
@@ -363,7 +377,7 @@ func _on_starting_tile_added(grid_pos: Vector2):
 	starting_tile_position = grid_pos
 	
 	# Force check for player at this position
-	var object = grid_manager.get_grid_object_reference(grid_pos)
+	var object = grid_manager.get_grid_object(grid_pos, true)
 	if object and is_instance_valid(object) and object.object_type == "player":
 		print("GridVisualizer: Player already on starting tile - applying green highlight")
 		# Force refresh just this position
@@ -373,3 +387,38 @@ func _on_starting_tile_added(grid_pos: Vector2):
 		print("GridVisualizer: No player found at starting tile position yet")
 		# Still refresh all - player might be added later
 		refresh_all_visuals()
+
+# Helper methods to access grid configuration
+func _get_grid_size_x() -> int:
+	return grid_manager.grid_size_x if grid_manager else 8
+
+func _get_grid_size_y() -> int:
+	return grid_manager.grid_size_y if grid_manager else 8
+
+func _get_tile_width() -> int:
+	return grid_manager.tile_width if grid_manager else 64
+
+func _get_tile_height() -> int:
+	return grid_manager.tile_height if grid_manager else 32
+
+# Create iso polygon function
+func _create_iso_polygon(center: Vector2 = Vector2.ZERO, scale_factor: float = 1.0) -> PackedVector2Array:
+	# Create isometric tile shape
+	var iso_tile = []
+	var half_width = _get_tile_width() * 0.5 * scale_factor
+	var half_height = _get_tile_height() * 0.5 * scale_factor
+	
+	# If center is zero, create a centered polygon
+	if center == Vector2.ZERO:
+		iso_tile.append(Vector2(0, -half_height)) # Top
+		iso_tile.append(Vector2(half_width, 0)) # Right
+		iso_tile.append(Vector2(0, half_height)) # Bottom
+		iso_tile.append(Vector2(-half_width, 0)) # Left
+	else:
+		# Create polygon at specific position
+		iso_tile.append(Vector2(center.x, center.y - half_height)) # Top
+		iso_tile.append(Vector2(center.x + half_width, center.y)) # Right
+		iso_tile.append(Vector2(center.x, center.y + half_height)) # Bottom
+		iso_tile.append(Vector2(center.x - half_width, center.y)) # Left
+	
+	return PackedVector2Array(iso_tile)

@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://cvxmex1fmgv0n"]
+[gd_scene load_steps=3 format=3 uid="uid://cvxmex1fmgv0n"]
 
-[ext_resource type="Script" uid="uid://bo3luh0y6wdm" path="res://core/grid/grid_manager.gd" id="1_aq4ir"]
+[ext_resource type="Script" uid="uid://bo3luh0y6wdm" path="res://core/grid/grid_manager.gd" id="1_sna3g"]
+[ext_resource type="Resource" uid="uid://p6p3kgvpd2to" path="res://core/grid/default_grid_config.tres" id="2_r2f0d"]
 
 [node name="GridManager" type="Node2D"]
-script = ExtResource("1_aq4ir")
+script = ExtResource("1_sna3g")
+configuration = ExtResource("2_r2f0d")

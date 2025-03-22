@@ -1,81 +1,142 @@
 @tool
 extends Node2D
 
+# Add class_name reference to the top
+const GridConfigurationClass = preload("res://core/grid/grid_configuration.gd")
+const GridObjectRegistryClass = preload("res://core/grid/grid_object_registry.gd")
+const GridCoordinateConverterClass = preload("res://core/grid/grid_coordinate_converter.gd")
 
-@export_category("Grid Dimensions")
-@export var grid_size_x: int = 8:
-	set(value):
-		grid_size_x = value
-		queue_redraw()
-@export var grid_size_y: int = 8:
-	set(value):
-		grid_size_y = value
-		queue_redraw()
+# Add a cached reference to SignalManager at the top with other variables
+var signal_manager = null
 
-@export_category("Tile Properties")
-@export var tile_width: int = 64:
-	set(value):
-		tile_width = value
-		queue_redraw()
-@export var tile_height: int = 32:
-	set(value):
-		tile_height = value
-		queue_redraw()
+# Reference to the object registry and coordinate converter
+var object_registry = null
+var coord_converter = null
 
-@export_category("Visual Settings")
-@export var show_grid_lines: bool = true:
+# Use a resource for configuration
+@export var configuration: GridConfigurationClass:
 	set(value):
-		show_grid_lines = value
-		queue_redraw()
-@export var grid_color: Color = Color(0.5, 0.5, 0.5, 0.5):
-	set(value):
-		grid_color = value
-		queue_redraw()
-@export var show_tile_coordinates: bool = false:
-	set(value):
-		show_tile_coordinates = value
-		queue_redraw()
-@export var highlight_origin: bool = true:
-	set(value):
-		highlight_origin = value
-		queue_redraw()
-@export var show_chess_coordinates: bool = true:
-	set(value):
-		show_chess_coordinates = value
-		queue_redraw()
-@export var show_chess_labels: bool = true:
-	set(value):
-		show_chess_labels = value
-		queue_redraw()
-@export var enable_grid_glow: bool = false:
-	set(value):
-		enable_grid_glow = value
-		queue_redraw()
-@export var grid_glow_color: Color = Color(0.5, 0.5, 0.5, 0.5):
-	set(value):
-		grid_glow_color = value
-		queue_redraw()
-@export var grid_glow_width: float = 3.0:
-	set(value):
-		grid_glow_width = value
-		queue_redraw()
-@export var grid_glow_intensity: int = 3:
-	set(value):
-		grid_glow_intensity = max(1, value)
-		queue_redraw()
+		if value != configuration:
+			# Disconnect from old configuration if it exists
+			if configuration and configuration.is_connected("property_changed", Callable(self, "_on_config_property_changed")):
+				configuration.disconnect("property_changed", Callable(self, "_on_config_property_changed"))
+			
+			# Set new configuration
+			configuration = value
+			
+			# Connect to new configuration
+			if configuration and not configuration.is_connected("property_changed", Callable(self, "_on_config_property_changed")):
+				configuration.connect("property_changed", Callable(self, "_on_config_property_changed"))
+			
+			# Force property update notifications
+			notify_property_list_changed()
+			queue_redraw()
 
-@export_category("Grid Object Generation")
-@export var poi_count: int = 3
-@export var terrain_count: int = 12
-@export var min_poi_distance: int = 3
-
-@export_category("Player Settings")
-@export var player_starting_tile: String = "A1":
+# These properties will now be derived from the configuration resource
+var grid_size_x: int:
+	get: return configuration.grid_size_x if configuration else 8
 	set(value):
-		player_starting_tile = value
-		# # Update player position if already spawned in editor
-		# if Engine.is_editor_hint() and is_inside_tree():
-		# 	update_player_in_editor()
+		if configuration:
+			configuration.grid_size_x = value
+			queue_redraw()
+var grid_size_y: int:
+	get: return configuration.grid_size_y if configuration else 8
+	set(value):
+		if configuration:
+			configuration.grid_size_y = value
+			queue_redraw()
+var tile_width: int:
+	get: return configuration.tile_width if configuration else 64
+	set(value):
+		if configuration:
+			configuration.tile_width = value
+			queue_redraw()
+var tile_height: int:
+	get: return configuration.tile_height if configuration else 32
+	set(value):
+		if configuration:
+			configuration.tile_height = value
+			queue_redraw()
+var show_grid_lines: bool:
+	get: return configuration.show_grid_lines if configuration else true
+	set(value):
+		if configuration:
+			configuration.show_grid_lines = value
+			queue_redraw()
+var grid_color: Color:
+	get: return configuration.grid_color if configuration else Color(0.5, 0.5, 0.5, 0.5)
+	set(value):
+		if configuration:
+			configuration.grid_color = value
+			queue_redraw()
+var show_tile_coordinates: bool:
+	get: return configuration.show_tile_coordinates if configuration else false
+	set(value):
+		if configuration:
+			configuration.show_tile_coordinates = value
+			queue_redraw()
+var highlight_origin: bool:
+	get: return configuration.highlight_origin if configuration else true
+	set(value):
+		if configuration:
+			configuration.highlight_origin = value
+			queue_redraw()
+var show_chess_coordinates: bool:
+	get: return configuration.show_chess_coordinates if configuration else true
+	set(value):
+		if configuration:
+			configuration.show_chess_coordinates = value
+			queue_redraw()
+var show_chess_labels: bool:
+	get: return configuration.show_chess_labels if configuration else true
+	set(value):
+		if configuration:
+			configuration.show_chess_labels = value
+			queue_redraw()
+var enable_grid_glow: bool:
+	get: return configuration.enable_grid_glow if configuration else false
+	set(value):
+		if configuration:
+			configuration.enable_grid_glow = value
+			queue_redraw()
+var grid_glow_color: Color:
+	get: return configuration.grid_glow_color if configuration else Color(0.5, 0.5, 0.5, 0.5)
+	set(value):
+		if configuration:
+			configuration.grid_glow_color = value
+			queue_redraw()
+var grid_glow_width: float:
+	get: return configuration.grid_glow_width if configuration else 3.0
+	set(value):
+		if configuration:
+			configuration.grid_glow_width = value
+			queue_redraw()
+var grid_glow_intensity: int:
+	get: return configuration.grid_glow_intensity if configuration else 3
+	set(value):
+		if configuration:
+			configuration.grid_glow_intensity = value
+			queue_redraw()
+var poi_count: int:
+	get: return configuration.poi_count if configuration else 3
+	set(value):
+		if configuration:
+			configuration.poi_count = value
+var terrain_count: int:
+	get: return configuration.terrain_count if configuration else 12
+	set(value):
+		if configuration:
+			configuration.terrain_count = value
+var min_poi_distance: int:
+	get: return configuration.min_poi_distance if configuration else 3
+	set(value):
+		if configuration:
+			configuration.min_poi_distance = value
+var player_starting_tile: String:
+	get: return configuration.player_starting_tile if configuration else "A1"
+	set(value):
+		if configuration:
+			configuration.player_starting_tile = value
 
 var grid_tiles = [] # Array of tiles in the grid, stored as a 2D array of Vector2 positions
 var hover_grid_pos = Vector2(-1, -1) # Track which tile is being hovered
@@ -88,8 +149,6 @@ var movement_state = null # Reference to movement state machine
 var impassable_tiles = [] # Array of Vector2 positions that cannot be moved to
 var grid_to_chess_friendly = true # Flag to determine if grid coordinates should be converted to chess notation
 var grid_visualizer: Node2D
-var poi_positions = [] # Track POI positions
-var terrain_positions = [] # Track terrain positions
 
 signal grid_mouse_hover(grid_pos)
 signal grid_mouse_exit
@@ -97,6 +156,10 @@ signal grid_tile_clicked(grid_pos)
 signal path_calculated(path)
 signal poi_generated(positions)
 signal grid_objects_generated(object_counts)
+signal starting_tile_added(grid_pos)
+signal player_spawned(player, grid_pos)
+signal grid_object_added(type, grid_pos)
+signal grid_object_removed(type, grid_pos)
 
 class GridObjectData:
 	var object
@@ -116,20 +179,84 @@ var grid_objects = {} # Dictionary keyed by grid position storing GridObjectData
 
 func _ready():
 	print("GridManager initialized")
-	if Engine.is_editor_hint():
-		# Find visualizer in editor too
-		grid_visualizer = get_node_or_null("GridVisualizer")
-		return
 	
-	grid_visualizer = get_node_or_null("GridVisualizer")
-	if not grid_visualizer:
-		push_error("GridVisualizer must be a child of GridManager")
-		
-	center_grid_in_viewport()
+	# Initialize configuration for editor and runtime
+	ensure_configuration()
 	
-	# Initialize grid objects after a short delay to ensure everything is set up
+	# Initialize object registry and coordinate converter
+	initialize_object_registry()
+	initialize_coordinate_converter()
+	
+	# Initialize signal manager reference (only in runtime)
 	if not Engine.is_editor_hint():
+		signal_manager = get_node_or_null("/root/SignalManager")
+	
+	# Find visualizer in both editor and runtime
+	grid_visualizer = get_node_or_null("GridVisualizer")
+	if not grid_visualizer and not Engine.is_editor_hint():
+		push_error("GridVisualizer must be a child of GridManager")
+	
+	# Only proceed with runtime-specific setup if not in editor
+	if not Engine.is_editor_hint():
+		center_grid_in_viewport()
+		# Initialize grid objects after a short delay to ensure everything is set up
 		call_deferred("generate_grid_objects")
+
+# Initialize the object registry
+func initialize_object_registry():
+	# Create the registry instance
+	object_registry = GridObjectRegistryClass.new(self)
+	add_child(object_registry)
+	
+	# Connect signals from registry
+	object_registry.connect("poi_generated", Callable(self, "_on_poi_generated"))
+	object_registry.connect("grid_objects_generated", Callable(self, "_on_grid_objects_generated"))
+	
+	# Initialize the registry
+	object_registry.initialize()
+
+# Initialize the coordinate converter
+func initialize_coordinate_converter():
+	# Create the converter instance
+	coord_converter = GridCoordinateConverterClass.new(self)
+
+# Forward signal handlers
+func _on_poi_generated(positions):
+	emit_signal("poi_generated", positions)
+
+func _on_grid_objects_generated(object_counts):
+	emit_signal("grid_objects_generated", object_counts)
+
+# Ensure configuration is set for both editor and runtime
+func ensure_configuration():
+	if not configuration:
+		var config_resource = load("res://core/grid/default_grid_config.tres")
+		if config_resource:
+			configuration = config_resource
+			print("Loaded default grid configuration")
+		else:
+			configuration = GridConfigurationClass.new()
+			print("Created default grid configuration")
+		
+		# Connect to property changed signal
+		if not configuration.is_connected("property_changed", Callable(self, "_on_config_property_changed")):
+			configuration.connect("property_changed", Callable(self, "_on_config_property_changed"))
+		
+		queue_redraw()
+
+# Respond to configuration property changes
+func _on_config_property_changed():
+	if Engine.is_editor_hint():
+		print("Grid configuration property changed")
+	queue_redraw()
+
+# Call this occasionally to ensure editor UI remains responsive to property changes
+func _process(_delta):
+	if Engine.is_editor_hint():
+		# Only rebuild properties when needed
+		if not configuration:
+			ensure_configuration()
+		# No need to queue_redraw on every frame for performance reasons
 
 func _draw():
 	if show_grid_lines:
@@ -181,25 +308,6 @@ func draw_chess_labels():
 		draw_string(font, pos + Vector2(-label_offset, 0), str(chess_row),
 				   HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
 
-# Convert grid coordinates to screen coordinates for isometric rendering
-func grid_to_screen(grid_pos) -> Vector2:
-	if typeof(grid_pos) == TYPE_VECTOR2:
-		var screen_x = (grid_pos.x - grid_pos.y) * (tile_width / 2.0)
-		var screen_y = (grid_pos.x + grid_pos.y) * (tile_height / 2.0)
-		return Vector2(screen_x, screen_y)
-	else:
-		# If not a Vector2, assume it's just the x coordinate and y is 0
-		var x = float(grid_pos)
-		var screen_x = x * (tile_width / 2.0)
-		var screen_y = x * (tile_height / 2.0)
-		return Vector2(screen_x, screen_y)
-
-# Alternative version with explicit x, y parameters
-func grid_to_screen_xy(x: float, y: float) -> Vector2:
-	var screen_x = (x - y) * (tile_width / 2.0)
-	var screen_y = (x + y) * (tile_height / 2.0)
-	return Vector2(screen_x, screen_y)
-
 # Draw a single isometric tile
 func draw_isometric_tile(grid_pos: Vector2):
 	var center = grid_to_screen(grid_pos)
@@ -240,11 +348,13 @@ func _input(event):
 			if grid_pos != hover_grid_pos:
 				hover_grid_pos = grid_pos
 				hover_chess_pos = grid_to_chess(grid_pos)
+				
 				emit_signal("grid_mouse_hover", grid_pos)
 		else:
 			if hover_grid_pos != Vector2(-1, -1):
 				hover_grid_pos = Vector2(-1, -1)
 				hover_chess_pos = ""
+				
 				emit_signal("grid_mouse_exit")
 	
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -254,114 +364,123 @@ func _input(event):
 		if is_valid_grid_position(grid_pos):
 			target_grid_pos = grid_pos
 			target_chess_pos = grid_to_chess(grid_pos)
+			
 			emit_signal("grid_tile_clicked", grid_pos)
 			
 			# Print debug info in both editor and runtime
 			print("Grid tile clicked: ", grid_pos, " ", target_chess_pos)
 
-# Convert screen position to grid coordinates
-func screen_to_grid(screen_pos: Vector2) -> Vector2:
-	var grid_x = (screen_pos.x / (tile_width / 2) + screen_pos.y / (tile_height / 2)) / 2
-	var grid_y = (screen_pos.y / (tile_height / 2) - screen_pos.x / (tile_width / 2)) / 2
-	return Vector2(round(grid_x), round(grid_y))
-
-# Convert grid coordinates to chess notation (A1, B2, etc.)
-func grid_to_chess(grid_pos: Vector2) -> String:
-	if not is_valid_grid_position(grid_pos):
-		return ""
-	
-	var chess_col = char(65 + int(grid_pos.x)) # A, B, C, etc.
-	var chess_row = grid_size_y - int(grid_pos.y) # 8, 7, 6, etc. (chess has row 1 at bottom)
-	return "%s%d" % [chess_col, chess_row]
-
-# Convert chess notation (A1, B2, etc.) to grid coordinates
-func chess_to_grid(chess_pos: String) -> Vector2:
-	if chess_pos.length() < 2:
-		return Vector2(-1, -1)
-	
-	var col = chess_pos[0].to_upper().unicode_at(0) - 65 # A=0, B=1, etc.
-	var row = int(chess_pos.substr(1))
-	
-	var grid_x = col
-	var grid_y = grid_size_y - row
-	
-	if is_valid_grid_position(Vector2(grid_x, grid_y)):
-		return Vector2(grid_x, grid_y)
-	else:
-		return Vector2(-1, -1)
-
-# Check if a grid position is valid
-func is_valid_grid_position(grid_pos: Vector2) -> bool:
-	return grid_pos.x >= 0 and grid_pos.x < grid_size_x and grid_pos.y >= 0 and grid_pos.y < grid_size_y
-
 # Register an object on the grid
-func add_grid_object(object, grid_pos: Vector2, type: String = "", visual_props: Dictionary = {}, disable_fog: bool = false) -> bool:
+func add_grid_object(object, grid_pos: Vector2, type: String = "", visual_props: Dictionary = {}, disable_fog: bool = false, emit_signal: bool = true) -> bool:
 	if is_valid_grid_position(grid_pos):
+		# If type wasn't provided, try to get it from the object
+		if type.is_empty() and object.get("object_type"):
+			type = object.object_type
+		elif type.is_empty():
+			type = "generic"
+	
+		# Create the GridObjectData instance
 		var data = GridObjectData.new()
 		data.object = object
 		data.type = type
 		
-		# Ensure visual properties have defaults for expected fields
-		var default_props = {
-			"highlight_color": Color.TRANSPARENT,
-			"highlight_border_color": Color.TRANSPARENT,
-			"sprite_texture": null,
-			"sprite_modulate": Color.WHITE
-		}
+		# Handle visual properties if provided
+		if not visual_props.is_empty():
+			# Ensure visual properties have defaults for expected fields
+			var default_props = {
+				"highlight_color": Color.TRANSPARENT,
+				"highlight_border_color": Color.TRANSPARENT,
+				"sprite_texture": null,
+				"sprite_modulate": Color.WHITE
+			}
+			
+			# Merge provided properties with defaults
+			for key in default_props:
+				if not visual_props.has(key):
+					visual_props[key] = default_props[key]
+			
+			data.visual_properties = visual_props
 		
-		# Merge provided properties with defaults
-		for key in default_props:
-			if not visual_props.has(key):
-				visual_props[key] = default_props[key]
-		
-		data.visual_properties = visual_props
+		# Set fog properties
 		data.disable_fog = disable_fog
+		
+		# Store in grid
 		grid_objects[grid_pos] = data
+		
+		# Update visuals if visualizer is available
 		if grid_visualizer:
 			grid_visualizer.update_grid_position(grid_pos)
+		
+		# Emit signal if requested
+		if emit_signal:
+			emit_signal("grid_object_added", type, grid_pos)
+		
 		return true
+	
 	return false
 
 # Get object at grid position
-func get_grid_object(grid_pos: Vector2):
-	# Return the GridObjectData object
-	return grid_objects.get(grid_pos)
-
-# Get the actual object reference at a grid position
-func get_grid_object_reference(grid_pos: Vector2):
+func get_grid_object(grid_pos: Vector2, return_object_only: bool = false) -> Variant:
 	var data = grid_objects.get(grid_pos)
-	return data.object if data else null
+	return (data.object if data else null) if return_object_only else data
+
+# Helper function to safely call method or return fallback
+func safe_call_method(object, method_name: String, fallback = null):
+	if object and object.has_method(method_name):
+		return object.call(method_name)
+	return fallback
 
 # Get visual properties for an object at given position
 func get_grid_object_visual_properties(grid_pos: Vector2) -> Dictionary:
 	var data = grid_objects.get(grid_pos)
 	if not data:
 		return {}
-		
-	# If GridObjectData has visual properties, use those methods
+	
+	# Call data's get_visual_properties() method directly with callable check
 	if data.has_method("get_visual_properties"):
-		return data.get_visual_properties()
+		var properties = data.get_visual_properties()
+		if properties:
+			return properties
 	
-	# Otherwise, try to get properties from the object itself
+	# Call object's get_visual_properties() method directly with null-safe check
 	if data.object and data.object.has_method("get_visual_properties"):
-		return data.object.get_visual_properties()
+		var properties = data.object.get_visual_properties()
+		if properties:
+			return properties
 	
-	# Fallback to returning the stored visual_properties dictionary
-	if data.get("visual_properties"):
-		return data.visual_properties
+	# Return stored visual properties or empty dictionary
+	return data.get("visual_properties", {})
+
+# Position and register an object on the grid
+func place_grid_object(instance: Node, grid_pos: Vector2) -> bool:
+	if not instance:
+		return false
 		
-	return {}
+	# Set position properties
+	instance.grid_position = grid_pos
+	instance.position = grid_to_screen(grid_pos)
+	
+	# Register with grid system
+	return add_grid_object(instance, grid_pos)
 
 # Remove object from grid
-func remove_grid_object(grid_pos: Vector2) -> void:
-	grid_objects.erase(grid_pos)
-	
-	if grid_visualizer:
-		grid_visualizer.update_grid_position(grid_pos)
-
-# Get grid object data directly (alias for get_grid_object for clarity)
-func get_grid_object_data(grid_pos: Vector2) -> GridObjectData:
-	return grid_objects.get(grid_pos)
+func remove_grid_object(grid_pos: Vector2, emit_signal: bool = true) -> void:
+	if grid_objects.has(grid_pos):
+		# Store object type for signal if needed
+		var object_type = ""
+		if emit_signal:
+			object_type = grid_objects[grid_pos].type
+		
+		# Remove from grid tracking
+		grid_objects.erase(grid_pos)
+		
+		# Update visuals if visualizer is available
+		if grid_visualizer:
+			grid_visualizer.update_grid_position(grid_pos)
+		
+		# Emit signal if requested
+		if emit_signal:
+			emit_signal("grid_object_removed", object_type, grid_pos)
 
 func center_grid_in_viewport():
 	# Calculate center tile of the grid
@@ -378,10 +497,6 @@ func center_grid_in_viewport():
 	
 	# Apply the offset
 	position = offset
-
-# func _on_grid_tile_clicked(grid_pos: Vector2):
-# 	# Grid manager handles the logic of what happens when a tile is clicked
-# 	# For example, checking if the player can move there
 
 # Get player's quadrant (0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right)
 func get_quadrant(grid_pos: Vector2) -> int:
@@ -451,58 +566,27 @@ func get_random_position_in_quadrant(quadrant: int) -> Vector2:
 	
 	return Vector2(x, y)
 
-# Check if position is far enough from other positions based on min_distance
+# Checks if position is far enough from other positions (delegated to the registry)
 func is_position_valid(pos: Vector2, existing_positions: Array, min_distance: int = min_poi_distance) -> bool:
-	for existing_pos in existing_positions:
-		var distance = abs(existing_pos.x - pos.x) + abs(existing_pos.y - pos.y) # Manhattan distance
-		if distance < min_distance:
-			return false
-	return true
-
-# Create a grid object of the specified type at the given position
-func create_grid_object(object_type: String, pos: Vector2):
-	var instance = null
-	match object_type:
-		"poi":
-			instance = load("res://core/objects/poi.gd").new()
-			instance.randomize_properties()
-		"terrain":
-			instance = load("res://core/objects/terrain.gd").new()
-			# No need to randomize terrain properties as it has a fixed style
-	
-	if instance:
-		add_child(instance)
-		instance.grid_position = pos
-		instance.position = grid_to_screen(pos)
-		register_grid_object(instance, pos)
-		
-		# Track position in type-specific arrays
-		if object_type == "poi":
-			poi_positions.append(pos)
-		elif object_type == "terrain":
-			terrain_positions.append(pos)
-	
-	return instance
+	return object_registry.is_position_valid(pos, existing_positions, min_distance)
 
 # Player reference and management
 var player_instance = null
 
 # Create and add player to starting position
 func add_player_to_grid() -> Node:
-	# Convert chess notation to grid coordinates
-	var start_pos = chess_to_grid(player_starting_tile)
+	# Use our new chained method to get valid grid position from chess notation
+	var start_pos = get_valid_grid_position(player_starting_tile)
 	
-	if not is_valid_grid_position(start_pos):
+	if start_pos == Vector2(-1, -1):
 		push_error("Invalid player starting position: " + player_starting_tile)
 		# Fallback to a valid position
 		start_pos = Vector2(0, 0)
 		player_starting_tile = grid_to_chess(start_pos)
 	
 	# Emit signal that starting tile is established
-	if has_node("/root/SignalManager"):
-		print("Emitting starting_tile_added signal with position: ", start_pos)
-		var signal_manager = get_node("/root/SignalManager")
-		signal_manager.emit_signal("starting_tile_added", start_pos)
+	print("Emitting starting_tile_added signal with position: ", start_pos)
+	emit_signal("starting_tile_added", start_pos)
 	
 	# Create player instance
 	var player = load("res://core/objects/player.gd").new()
@@ -513,171 +597,63 @@ func add_player_to_grid() -> Node:
 	player.position = grid_to_screen(start_pos)
 	
 	# Register with the grid system
-	register_grid_object(player, start_pos)
+	add_grid_object(player, start_pos)
 	
 	# Store reference for easy access
 	player_instance = player
 	
 	# Emit signal that player was added
-	if has_node("/root/SignalManager"):
-		var signal_manager = get_node("/root/SignalManager")
-		signal_manager.emit_signal("player_spawned", player, start_pos)
+	emit_signal("player_spawned", player, start_pos)
 	
 	print("Player added at " + player_starting_tile + " (Grid: " + str(start_pos) + ")")
 	return player
 
-# Generate all grid objects (POIs and terrain)
+# Main coordinator function for generating grid objects (delegated to registry)
 func generate_grid_objects():
-	print("Generating grid objects...")
-	
-	# Clear existing objects
-	clear_existing_objects()
+	object_registry.generate_grid_objects()
 
-	# add player to grid
-	add_player_to_grid()
-	
-	# Generate POIs first (higher priority)
-	generate_objects_of_type("poi", poi_count)
-	
-	# Then generate terrain on remaining tiles
-	generate_objects_of_type("terrain", terrain_count)
-	
-	# Emit signal for all generated objects
-	if has_node("/root/SignalManager"):
-		var signal_manager = get_node("/root/SignalManager")
-		var object_counts = {
-			"poi": poi_positions.size(),
-			"terrain": terrain_positions.size()
-		}
-		signal_manager.emit_signal("grid_objects_generated", object_counts)
-	else:
-		push_warning("SignalManager not found. Grid objects generation signal not emitted.")
-	
-	print("Grid object generation complete. Created %d POIs and %d terrain objects" % [poi_positions.size(), terrain_positions.size()])
+# Helper to check if property exists
+func has_property(property_name: String) -> bool:
+	return get(property_name) != null
 
-# Clear all existing generated objects
-func clear_existing_objects():
-	# Clear POIs
-	for pos in poi_positions:
-		var obj = get_grid_object_reference(pos)
-		if obj and is_instance_valid(obj):
-			obj.queue_free()
-		remove_grid_object(pos)
-	
-	# Clear terrain
-	for pos in terrain_positions:
-		var obj = get_grid_object_reference(pos)
-		if obj and is_instance_valid(obj):
-			obj.queue_free()
-		remove_grid_object(pos)
-		
-	poi_positions.clear()
-	terrain_positions.clear()
+# --------- Coordinate Conversion Methods (using Converter) ---------
 
-# Generate objects of a specific type
-func generate_objects_of_type(object_type: String, count: int):
-	print("Generating %d objects of type %s" % [count, object_type])
-	
-	# Get already occupied positions
-	var occupied_positions = []
-	for pos in grid_objects.keys():
-		occupied_positions.append(pos)
-	
-	var positions = []
-	var max_attempts = grid_size_x * grid_size_y
-	var attempts = 0
-	
-	# Apply minimum distance constraint only for POIs
-	var min_distance = min_poi_distance if object_type == "poi" else 0
-	
-	while positions.size() < count and attempts < max_attempts:
-		var x = randi() % grid_size_x
-		var y = randi() % grid_size_y
-		var pos = Vector2(x, y)
-		
-		# Skip if position is already occupied
-		if occupied_positions.has(pos):
-			attempts += 1
-			continue
-			
-		# Check minimum distance requirement for POIs
-		if object_type == "poi" and min_distance > 0:
-			if not is_position_valid(pos, positions):
-				attempts += 1
-				continue
-				
-		# Create object at this position
-		var instance = create_grid_object(object_type, pos)
-		if instance:
-			positions.append(pos)
-			occupied_positions.append(pos)
-			
-		attempts += 1
-	
-	# Emit type-specific signal if needed
-	if object_type == "poi" and has_node("/root/SignalManager"):
-		var signal_manager = get_node("/root/SignalManager")
-		signal_manager.emit_signal("poi_generated", positions)
-		
-	# Log a warning if we couldn't create all objects
-	if positions.size() < count:
-		push_warning("Could only create %d %s out of %d requested - try reducing constraints or increasing grid size."
-			% [positions.size(), object_type, count])
-		
-	return positions
+# Convert grid coordinates to screen coordinates
+func grid_to_screen(grid_pos) -> Vector2:
+	return coord_converter.grid_to_screen(grid_pos)
 
-# Register a grid object with the grid
-func register_grid_object(object, grid_pos: Vector2) -> bool:
-	if is_valid_grid_position(grid_pos):
-		# Get the object type
-		var type = "generic"
-		if object.get("object_type"):
-			type = object.object_type
-		
-		# Add to grid_objects dictionary without visual properties
-		var data = GridObjectData.new()
-		data.object = object
-		data.type = type
-		grid_objects[grid_pos] = data
-		
-		# Use the global SignalManager to emit the signal
-		if has_node("/root/SignalManager"):
-			var signal_manager = get_node("/root/SignalManager")
-			signal_manager.emit_signal("grid_object_added", type, grid_pos)
-		
-		return true
-	
-	return false
+# Convert grid coordinates to screen with explicit x, y parameters
+func grid_to_screen_xy(x: float, y: float) -> Vector2:
+	return coord_converter.grid_to_screen_xy(x, y)
 
-func unregister_grid_object(grid_pos: Vector2) -> void:
-	if grid_objects.has(grid_pos):
-		var object_type = grid_objects[grid_pos].type
-		grid_objects.erase(grid_pos)
-		
-		# Use the global SignalManager to emit the signal
-		if has_node("/root/SignalManager"):
-			var signal_manager = get_node("/root/SignalManager")
-			signal_manager.emit_signal("grid_object_removed", object_type, grid_pos)
+# Convert screen position to grid coordinates
+func screen_to_grid(screen_pos: Vector2) -> Vector2:
+	return coord_converter.screen_to_grid(screen_pos)
 
-# The following functions are being kept for backward compatibility or future use
-# with quadrant-based positioning
+# Convert grid coordinates to chess notation
+func grid_to_chess(grid_pos: Vector2) -> String:
+	return coord_converter.grid_to_chess(grid_pos)
 
-# Old functions that can be called by generate_grid_objects instead of the default random generation
-func generate_pois():
-	print("DEPRECATED: Use generate_grid_objects() instead")
-	generate_grid_objects()
+# Convert chess notation to grid coordinates
+func chess_to_grid(chess_pos: String) -> Vector2:
+	return coord_converter.chess_to_grid(chess_pos)
 
-func generate_pois_random(count: int = 0):
-	print("DEPRECATED: Use generate_objects_of_type('poi', count) instead")
-	if count <= 0:
-		count = poi_count
-	generate_objects_of_type("poi", count)
+# Check if a grid position is valid
+func is_valid_grid_position(grid_pos: Vector2) -> bool:
+	return coord_converter.is_valid_grid_position(grid_pos)
 
-# Create a POI at the given position - kept for backward compatibility
-func create_poi_at_position(pos: Vector2):
-	print("DEPRECATED: Use create_grid_object('poi', pos) instead")
-	return create_grid_object("poi", pos)
+# Convert grid position to chess notation if valid
+func get_valid_chess_notation(grid_pos: Vector2) -> String:
+	return coord_converter.get_valid_chess_notation(grid_pos)
+
+# Convert chess notation to grid position if valid
+func get_valid_grid_position(chess_pos: String) -> Vector2:
+	return coord_converter.get_valid_grid_position(chess_pos)
+
+# Convert screen coordinates directly to chess notation
+func screen_to_chess(screen_pos: Vector2) -> String:
+	return coord_converter.screen_to_chess(screen_pos)
 
 func _on_object_visual_changed(object):
 	# Re-register to update visuals when state changes
-	register_grid_object(object, object.grid_position)
+	add_grid_object(object, object.grid_position)

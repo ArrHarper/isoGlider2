@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="GridConfiguration" load_steps=2 format=3 uid="uid://p6p3kgvpd2to"]
+
+[ext_resource type="Script" uid="uid://clf1qaoeoa1u5" path="res://core/grid/grid_configuration.gd" id="1_bjh17"]
+
+[resource]
+script = ExtResource("1_bjh17")
+grid_size_x = 8
+grid_size_y = 8
+tile_width = 64
+tile_height = 32
+show_grid_lines = true
+grid_color = Color(0.5, 0.5, 0.5, 0.5)
+show_tile_coordinates = true
+highlight_origin = false
+show_chess_coordinates = false
+show_chess_labels = true
+enable_grid_glow = false
+grid_glow_color = Color(0.5, 0.5, 0.5, 0.5)
+grid_glow_width = 3.0
+grid_glow_intensity = 3
+poi_count = 3
+terrain_count = 12
+min_poi_distance = 3
+player_starting_tile = "A1"
