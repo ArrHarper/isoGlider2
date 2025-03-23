@@ -326,8 +326,8 @@ func _finish_collection():
 	var grid_manager = _find_grid_manager()
 	if grid_manager:
 		# Use forceful clear method if available
-		if grid_manager.has_method("forcefully_clear_grid_object"):
-			grid_manager.forcefully_clear_grid_object(grid_position)
+		if grid_manager.has_method("forcefully_remove_grid_object"):
+			grid_manager.forcefully_remove_grid_object(grid_position)
 		else:
 			# Fallback to old method
 			unregister_from_grid()

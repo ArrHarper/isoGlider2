@@ -234,7 +234,7 @@ func check_for_poi_at_position(grid_pos: Vector2, grid_manager):
 				if grid_manager.has_node("GridVisualizer"):
 					var visualizer = grid_manager.get_node("GridVisualizer")
 					visualizer.update_grid_position(grid_pos)
-					visualizer._clear_position_visuals(grid_pos) # Ensure visuals are cleared
+					visualizer.clear_position_visuals(grid_pos) # Ensure visuals are cleared
 
 # Set player state and emit signal
 func set_player_state(new_state: String):

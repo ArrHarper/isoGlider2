@@ -54,8 +54,9 @@ func _ready():
 		push_error("GridVisualizer: Parent is not a valid GridManager!")
 		return
 		
-	# Connect all signals from the grid manager and signal manager
-	print("GridVisualizer: Connecting signals in _ready()")
+	# Connect signals for compatibility with existing code
+	# This preserves compatibility while we transition to direct method calls
+	print("GridVisualizer: Connecting signals in _ready() for backward compatibility")
 	
 	# Connect essential signals DIRECTLY from GridManager first
 	# This ensures signals are connected regardless of SignalManager
@@ -64,7 +65,7 @@ func _ready():
 		if !grid_manager.is_connected("starting_tile_added", Callable(self, "_on_starting_tile_added")):
 			grid_manager.connect("starting_tile_added", Callable(self, "_on_starting_tile_added"))
 	
-	# Use SignalManager for connections
+	# Use SignalManager for connections if available
 	var signal_manager = get_node_or_null("/root/SignalManager")
 	if signal_manager:
 		print("GridVisualizer: Found SignalManager")
@@ -80,10 +81,10 @@ func _ready():
 		SignalManager.connect_signal("starting_tile_added", self, "_on_starting_tile_added")
 		SignalManager.connect_signal("player_state_changed", self, "_on_player_state_changed")
 	else:
-		push_error("GridVisualizer: SignalManager not found!")
+		print("GridVisualizer: SignalManager not found! Direct method calls required.")
 	
 	# Debug
-	print("GridVisualizer initialized. Waiting for starting_tile_added signal.")
+	print("GridVisualizer initialized. Using direct method calls where possible.")
 
 func _setup_layers():
 	# Clean up any existing layers first
@@ -117,7 +118,7 @@ func _on_grid_object_added(object_type: String, grid_pos: Vector2):
 
 # Add handler for grid_object_removed signal
 func _on_grid_object_removed(object_type: String, grid_pos: Vector2):
-	_clear_position_visuals(grid_pos)
+	clear_position_visuals(grid_pos)
 	
 	# Re-apply starting tile highlight if this was the starting position
 	if grid_pos == starting_tile_position:
@@ -131,12 +132,12 @@ func _create_test_highlight():
 	# Create test highlight at grid center 
 	var test_pos = Vector2(int(_get_grid_size_x() / 2), int(_get_grid_size_y() / 2))
 	test_highlight_id = "test_highlight"
-	_add_highlight(test_pos, default_highlight_color, Color.RED, test_highlight_id)
+	add_highlight(test_pos, default_highlight_color, Color.RED, test_highlight_id)
 
 # Clear the test highlight
 func _clear_test_highlight():
 	if test_highlight_id:
-		_remove_highlight(test_highlight_id)
+		remove_highlight(test_highlight_id)
 		test_highlight_id = ""
 
 # MOUSE HANDLERS
@@ -144,34 +145,38 @@ func _clear_test_highlight():
 func _on_grid_mouse_hover(grid_pos: Vector2):
 	# Remove previous hover highlight if any
 	if hover_highlight_id:
-		_remove_highlight(hover_highlight_id)
+		remove_highlight(hover_highlight_id)
 		
 	# Add new hover highlight
 	hover_highlight_id = "hover"
-	_add_highlight(grid_pos, hover_highlight_color, Color.TRANSPARENT, hover_highlight_id)
+	add_highlight(grid_pos, hover_highlight_color, Color.TRANSPARENT, hover_highlight_id)
 
 # Handler for grid_mouse_exit signal
 func _on_grid_mouse_exit():
 	# Remove hover highlight
 	if hover_highlight_id:
-		_remove_highlight(hover_highlight_id)
+		remove_highlight(hover_highlight_id)
 		hover_highlight_id = ""
 
 # Handler for grid_tile_clicked signal
 func _on_grid_tile_clicked(grid_pos: Vector2):
 	# Remove previous selection highlight if any
 	if selection_highlight_id:
-		_remove_highlight(selection_highlight_id)
+		remove_highlight(selection_highlight_id)
 		
 	# Add new selection highlight
 	selection_highlight_id = "selection"
-	_add_highlight(grid_pos, selection_highlight_color, Color.GREEN, selection_highlight_id)
+	add_highlight(grid_pos, selection_highlight_color, Color.GREEN, selection_highlight_id)
 
 # Handler for path_calculated signal
 func _on_path_calculated(path: Array):
+	visualize_path(path)
+
+# Create visualization for a movement path
+func visualize_path(path: Array) -> void:
 	# Clear previous path highlight
 	if path_highlight_id:
-		_remove_highlight(path_highlight_id)
+		remove_highlight(path_highlight_id)
 		path_highlight_id = ""
 	
 	# Create highlights for each tile in the path
@@ -181,7 +186,7 @@ func _on_path_calculated(path: Array):
 		# Verify this tile is passable through the grid manager before highlighting
 		if grid_manager.has_method("is_tile_passable") and grid_manager.is_tile_passable(pos):
 			var id = "path_%d" % i
-			_add_highlight(pos, path_highlight_color, Color.TRANSPARENT, id)
+			add_highlight(pos, path_highlight_color, Color.TRANSPARENT, id)
 		else:
 			print("Not highlighting impassable tile at path position: ", pos)
 
@@ -204,7 +209,7 @@ func _create_sprite(grid_pos: Vector2, texture: Texture2D, modulate: Color = Col
 	object_sprites[grid_pos] = sprite
 
 # Add a highlight to a grid position with specified colors and ID
-func _add_highlight(grid_pos: Vector2, color: Color, border_color: Color = Color.TRANSPARENT, id: String = "") -> String:
+func add_highlight(grid_pos: Vector2, color: Color, border_color: Color = Color.TRANSPARENT, id: String = "") -> String:
 	# Skip if already exists
 	if id != "" and active_highlights.has(id):
 		var highlight = active_highlights[id]
@@ -263,7 +268,7 @@ func _add_highlight(grid_pos: Vector2, color: Color, border_color: Color = Color
 	return id
 
 # Remove a highlight by ID
-func _remove_highlight(id: String) -> void:
+func remove_highlight(id: String) -> void:
 	if active_highlights.has(id):
 		var highlight = active_highlights[id]
 		
@@ -280,13 +285,13 @@ func _on_poi_generated(positions):
 	
 	# Force refresh of all visuals
 	for pos in positions:
-		_clear_position_visuals(pos) # Clear any existing visuals first
+		clear_position_visuals(pos) # Clear any existing visuals first
 		update_grid_position(pos)
 		
 # Update tile visualization with POI object
 func update_grid_position(grid_pos: Vector2) -> void:
 	# Clear existing visuals
-	_clear_position_visuals(grid_pos)
+	clear_position_visuals(grid_pos)
 	
 	# Special case for starting tile - always keep its highlight
 	if grid_pos == starting_tile_position:
@@ -313,7 +318,7 @@ func update_grid_position(grid_pos: Vector2) -> void:
 		
 		if props.has("highlight_color") and props["highlight_color"] != Color.TRANSPARENT:
 			var border_color = props.get("highlight_border_color", Color.TRANSPARENT)
-			_add_highlight(grid_pos, props["highlight_color"], border_color,
+			add_highlight(grid_pos, props["highlight_color"], border_color,
 						  "object_%s_%s" % [grid_pos.x, grid_pos.y])
 		
 		if props.has("shape") and props.has("shape_points") and props.has("shape_color"):
@@ -363,10 +368,10 @@ func _update_tile_shape(grid_pos: Vector2, object_data) -> void:
 			shape_polygons[grid_pos] = polygon
 
 # Clear all visuals at a specific grid position
-func _clear_position_visuals(grid_pos: Vector2) -> void:
+func clear_position_visuals(grid_pos: Vector2) -> void:
 	# Remove highlight if it exists
 	var highlight_id = "object_%s_%s" % [grid_pos.x, grid_pos.y]
-	_remove_highlight(highlight_id)
+	remove_highlight(highlight_id)
 	
 	# Remove sprite if it exists
 	if object_sprites.has(grid_pos):
@@ -395,9 +400,9 @@ func _on_starting_tile_added(grid_pos: Vector2) -> void:
 	# Clear any existing starting tile visuals
 	if starting_tile_position != Vector2(-1, -1):
 		print("GridVisualizer: Clearing existing starting tile visuals at: ", starting_tile_position)
-		_clear_position_visuals(starting_tile_position)
+		clear_position_visuals(starting_tile_position)
 		if starting_tile_highlight_id != "":
-			_remove_highlight(starting_tile_highlight_id)
+			remove_highlight(starting_tile_highlight_id)
 			starting_tile_highlight_id = ""
 	
 	# Set the new starting tile position
@@ -425,7 +430,7 @@ func _on_starting_tile_added(grid_pos: Vector2) -> void:
 				color = starting_tile_immobilized_color
 				border_color = starting_tile_immobilized_border_color
 		
-		starting_tile_highlight_id = _add_highlight(starting_tile_position, color, border_color, "starting_tile")
+		starting_tile_highlight_id = add_highlight(starting_tile_position, color, border_color, "starting_tile")
 		print("GridVisualizer: Retry - Starting tile highlight created with ID: ", starting_tile_highlight_id)
 	else:
 		print("GridVisualizer: Starting tile highlight successfully created with ID: ", starting_tile_highlight_id)
@@ -442,7 +447,7 @@ func update_starting_tile_highlight() -> void:
 	# Clear any existing highlight first
 	if starting_tile_highlight_id != "":
 		print("GridVisualizer: Removing existing highlight with ID: ", starting_tile_highlight_id)
-		_remove_highlight(starting_tile_highlight_id)
+		remove_highlight(starting_tile_highlight_id)
 		starting_tile_highlight_id = ""
 	
 	# Determine colors based on player state
@@ -458,7 +463,7 @@ func update_starting_tile_highlight() -> void:
 			border_color = starting_tile_immobilized_border_color
 	
 	# Add the highlight
-	starting_tile_highlight_id = _add_highlight(starting_tile_position, color, border_color, "starting_tile")
+	starting_tile_highlight_id = add_highlight(starting_tile_position, color, border_color, "starting_tile")
 	print("GridVisualizer: Updated starting tile highlight with ID: ", starting_tile_highlight_id)
 
 # Handler for player state changes to update starting tile highlight
@@ -510,8 +515,8 @@ func force_set_starting_tile(grid_pos: Vector2) -> void:
 	
 	# Clear any existing starting tile visuals
 	if starting_tile_position != Vector2(-1, -1):
-		_clear_position_visuals(starting_tile_position)
-		_remove_highlight(starting_tile_highlight_id)
+		clear_position_visuals(starting_tile_position)
+		remove_highlight(starting_tile_highlight_id)
 	
 	# Set the new starting tile position
 	starting_tile_position = grid_pos

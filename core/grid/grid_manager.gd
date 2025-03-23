@@ -5,6 +5,7 @@ extends Node2D
 const GridConfigurationClass = preload("res://core/grid/grid_configuration.gd")
 const GridObjectRegistryClass = preload("res://core/grid/grid_object_registry.gd")
 const GridCoordinateConverterClass = preload("res://core/grid/grid_coordinate_converter.gd")
+const PlayerMovementHandlerClass = preload("res://core/player/player_movement_handler.gd")
 
 # Add a cached reference to SignalManager at the top with other variables
 var signal_manager = null
@@ -12,6 +13,17 @@ var signal_manager = null
 # Reference to the object registry and coordinate converter
 var object_registry = null
 var coord_converter = null
+var movement_handler = null
+
+# Provide accessor for player_instance for backward compatibility
+var player_instance: Node:
+	get:
+		return movement_handler.player_instance if movement_handler else null
+
+# Provide accessor for player_is_moving for backward compatibility
+var is_player_moving: bool:
+	get:
+		return movement_handler.player_is_moving if movement_handler else false
 
 # Use a resource for configuration
 @export var configuration: GridConfigurationClass:
@@ -160,6 +172,12 @@ signal starting_tile_added(grid_pos)
 signal player_spawned(player, grid_pos)
 signal grid_object_added(type, grid_pos)
 signal grid_object_removed(type, grid_pos)
+# Forward signal handlers
+func _on_poi_generated(positions):
+	emit_signal("poi_generated", positions)
+
+func _on_grid_objects_generated(object_counts):
+	emit_signal("grid_objects_generated", object_counts)
 
 class GridObjectData:
 	var object
@@ -177,6 +195,8 @@ class GridObjectData:
 
 var grid_objects = {} # Dictionary keyed by grid position storing GridObjectData objects
 
+## --------- Core Grid System Functions ---------
+
 func _ready():
 	print("GridManager initialized")
 	
@@ -187,28 +207,38 @@ func _ready():
 	initialize_object_registry()
 	initialize_coordinate_converter()
 	
-	# Initialize signal manager reference (only in runtime)
-	if not Engine.is_editor_hint():
-		signal_manager = get_node_or_null("/root/SignalManager")
-	
 	# Find visualizer in both editor and runtime
 	grid_visualizer = get_node_or_null("GridVisualizer")
 	if not grid_visualizer and not Engine.is_editor_hint():
 		push_error("GridVisualizer must be a child of GridManager")
 	
-	# Only proceed with runtime-specific setup if not in editor
+	# Initialize movement handler (after visualizer is set)
+	initialize_movement_handler()
+	
+	# Initialize signal manager reference (only in runtime)
 	if not Engine.is_editor_hint():
-		# Connect grid signals to their handlers
-		if not is_connected("grid_mouse_hover", Callable(self, "_on_grid_mouse_hover")):
-			connect("grid_mouse_hover", Callable(self, "_on_grid_mouse_hover"))
-		if not is_connected("grid_mouse_exit", Callable(self, "_on_grid_mouse_exit")):
-			connect("grid_mouse_exit", Callable(self, "_on_grid_mouse_exit"))
-		if not is_connected("grid_tile_clicked", Callable(self, "_on_grid_tile_clicked")):
-			connect("grid_tile_clicked", Callable(self, "_on_grid_tile_clicked"))
+		signal_manager = get_node_or_null("/root/SignalManager")
+	
+		# Connect grid signals to the movement handler
+		if movement_handler:
+			movement_handler.connect_grid_signals()
 		
 		center_grid_in_viewport()
 		# Initialize grid objects after a short delay to ensure everything is set up
 		call_deferred("generate_grid_objects")
+
+# Initialize the movement handler
+func initialize_movement_handler():
+	# Create the movement handler instance
+	movement_handler = PlayerMovementHandlerClass.new(self)
+	add_child(movement_handler)
+	
+	# Make sure the visualizer reference is properly set
+	if movement_handler and grid_visualizer:
+		movement_handler.grid_visualizer = grid_visualizer
+	
+	# Initialize the handler
+	print("Movement handler initialized")
 
 # Initialize the object registry
 func initialize_object_registry():
@@ -227,13 +257,6 @@ func initialize_object_registry():
 func initialize_coordinate_converter():
 	# Create the converter instance
 	coord_converter = GridCoordinateConverterClass.new(self)
-
-# Forward signal handlers
-func _on_poi_generated(positions):
-	emit_signal("poi_generated", positions)
-
-func _on_grid_objects_generated(object_counts):
-	emit_signal("grid_objects_generated", object_counts)
 
 # Ensure configuration is set for both editor and runtime
 func ensure_configuration():
@@ -344,6 +367,22 @@ func draw_isometric_tile(grid_pos: Vector2):
 	# Draw the main outline
 	draw_polyline(closed_points, grid_color, 1.0)
 
+func center_grid_in_viewport():
+	# Calculate center tile of the grid
+	var center_tile = Vector2(grid_size_x / 2.0, grid_size_y / 2.0)
+	
+	# Get the center of the viewport
+	var viewport_center = get_viewport_rect().size / 2
+	
+	# Convert center tile to screen coordinates
+	var center_tile_screen_pos = grid_to_screen(center_tile)
+	
+	# Calculate offset to move the center tile to viewport center
+	var offset = viewport_center - center_tile_screen_pos
+	
+	# Apply the offset
+	position = offset
+
 func _input(event):
 	if Engine.is_editor_hint():
 		return
@@ -378,7 +417,7 @@ func _input(event):
 			print("Left mouse button clicked at grid position: ", grid_pos, " (", target_chess_pos, ")")
 			
 			# Check if player is moving
-			if player_is_moving:
+			if is_player_moving:
 				print("Ignoring click because player is currently moving")
 				return
 				
@@ -386,6 +425,12 @@ func _input(event):
 			
 			# Print debug info in both editor and runtime
 			print("Grid tile clicked signal emitted for: ", grid_pos, " ", target_chess_pos)
+
+## --------- Grid Object Management Functions ---------
+
+# Main coordinator function for generating grid objects (delegated to registry)
+func generate_grid_objects():
+	object_registry.generate_grid_objects()
 
 # Register an object on the grid
 func add_grid_object(object, grid_pos: Vector2, type: String = "", visual_props: Dictionary = {}, disable_fog: bool = false, emit_signal: bool = true) -> bool:
@@ -434,9 +479,9 @@ func add_grid_object(object, grid_pos: Vector2, type: String = "", visual_props:
 		if grid_visualizer:
 			grid_visualizer.update_grid_position(grid_pos)
 		
-		# Emit signal if requested
-		if emit_signal:
-			emit_signal("grid_object_added", type, grid_pos)
+		# Emit signal if requested (for non-visualizer systems)
+		if emit_signal and signal_manager:
+			signal_manager.emit_signal("grid_object_added", type, grid_pos)
 		
 		return true
 	
@@ -502,14 +547,14 @@ func remove_grid_object(grid_pos: Vector2, emit_signal: bool = true) -> void:
 		
 		# Update visuals if visualizer is available
 		if grid_visualizer:
-			grid_visualizer.update_grid_position(grid_pos)
+			grid_visualizer.clear_position_visuals(grid_pos)
 		
-		# Emit signal if requested
-		if emit_signal:
-			emit_signal("grid_object_removed", object_type, grid_pos)
+		# Emit signal if requested (for non-visualizer systems)
+		if emit_signal and signal_manager:
+			signal_manager.emit_signal("grid_object_removed", object_type, grid_pos)
 
 # Remove object from grid with forced visual update
-func forcefully_clear_grid_object(grid_pos: Vector2, emit_signal: bool = true) -> void:
+func forcefully_remove_grid_object(grid_pos: Vector2, emit_signal: bool = true) -> void:
 	if grid_objects.has(grid_pos):
 		# Store object type for signal if needed
 		var object_type = ""
@@ -525,29 +570,20 @@ func forcefully_clear_grid_object(grid_pos: Vector2, emit_signal: bool = true) -
 		# Force immediate visual update
 		if grid_visualizer:
 			# Clear visuals completely
-			grid_visualizer._clear_position_visuals(grid_pos)
+			grid_visualizer.clear_position_visuals(grid_pos)
 			# Then update the position after clearing
 			grid_visualizer.update_grid_position(grid_pos)
 		
-		# Emit signal if requested
-		if emit_signal:
-			emit_signal("grid_object_removed", object_type, grid_pos)
+		# Emit signal if requested (for non-visualizer systems)
+		if emit_signal and signal_manager:
+			signal_manager.emit_signal("grid_object_removed", object_type, grid_pos)
 
-func center_grid_in_viewport():
-	# Calculate center tile of the grid
-	var center_tile = Vector2(grid_size_x / 2.0, grid_size_y / 2.0)
-	
-	# Get the center of the viewport
-	var viewport_center = get_viewport_rect().size / 2
-	
-	# Convert center tile to screen coordinates
-	var center_tile_screen_pos = grid_to_screen(center_tile)
-	
-	# Calculate offset to move the center tile to viewport center
-	var offset = viewport_center - center_tile_screen_pos
-	
-	# Apply the offset
-	position = offset
+
+# Helper to check if property exists
+func has_property(property_name: String) -> bool:
+	return get(property_name) != null
+
+## --------- Position Utility Functions ---------
 
 # Get player's quadrant (0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right)
 func get_quadrant(grid_pos: Vector2) -> int:
@@ -621,107 +657,42 @@ func get_random_position_in_quadrant(quadrant: int) -> Vector2:
 func is_position_valid(pos: Vector2, existing_positions: Array, min_distance: int = min_poi_distance) -> bool:
 	return object_registry.is_position_valid(pos, existing_positions, min_distance)
 
-# Player reference and management
-var player_instance = null
-
-# Create and add player to starting position
-func add_player_to_grid() -> Node:
-	# First, clean up any existing player instance to prevent duplicates
-	if player_instance and is_instance_valid(player_instance):
-		print("Removing existing player instance")
-		# Find current grid position of player
-		var old_pos = player_instance.grid_position
-		# Remove from grid tracking
-		if grid_objects.has(old_pos):
-			grid_objects.erase(old_pos)
-			# Update grid visualizer for the old position
-			if grid_visualizer:
-				grid_visualizer.update_grid_position(old_pos)
-		# Free the instance
-		player_instance.queue_free()
-		player_instance = null
-	
-	# Use our new chained method to get valid grid position from chess notation
-	var start_pos = get_valid_grid_position(player_starting_tile)
-	
-	if start_pos == Vector2(-1, -1):
-		push_error("Invalid player starting position: " + player_starting_tile)
-		# Fallback to a valid position
-		start_pos = Vector2(0, 0)
-		player_starting_tile = grid_to_chess(start_pos)
-	
-	# Make sure grid_visualizer is properly set up before emitting the signal
-	if grid_visualizer == null:
-		print("WARNING: GridVisualizer not found when adding player, attempting to find it...")
-		grid_visualizer = get_node_or_null("GridVisualizer")
-		if grid_visualizer:
-			print("GridVisualizer found!")
-		else:
-			print("ERROR: GridVisualizer still not found!")
-	
-	# Try both ways to set the starting tile - emit signal and direct call
-	print("GridManager: Emitting starting_tile_added signal with position: ", start_pos)
-	emit_signal("starting_tile_added", start_pos)
-	
-	# Direct call for reliability 
-	if grid_visualizer and grid_visualizer.has_method("force_set_starting_tile"):
-		grid_visualizer.force_set_starting_tile(start_pos)
-	
-	# Double-check the starting tile highlight
-	if grid_visualizer:
-		call_deferred("_check_starting_tile_highlight", start_pos)
-	
-	# Instantiate player scene instead of creating a new class instance
-	var player_scene = load("res://core/objects/player.tscn")
-	var player = player_scene.instantiate()
-	add_child(player)
-	
-	# Set position and register
-	player.grid_position = start_pos
-	player.position = grid_to_screen(start_pos)
-	
-	# Register with the grid system
-	add_grid_object(player, start_pos)
-	
-	# Store reference for easy access
-	player_instance = player
-	
-	# Emit signal that player was added
-	emit_signal("player_spawned", player, start_pos)
-	
-	print("Player added at " + player_starting_tile + " (Grid: " + str(start_pos) + ")")
-	
-	# Initialize the movement state machine
-	initialize_movement_state_machine()
-	
-	# Connect movement signals
-	connect_movement_signals()
-	
-	return player
-
-# Helper function to check if the starting tile highlight is properly applied
-func _check_starting_tile_highlight(start_pos: Vector2) -> void:
-	# Wait a frame to ensure all deferred calls are processed
-	await get_tree().process_frame
-	
-	print("GridManager: Checking if starting tile highlight was applied at: ", start_pos)
-	
-	if grid_visualizer and grid_visualizer.active_highlights.has(grid_visualizer.starting_tile_highlight_id):
-		print("GridManager: Starting tile highlight is active!")
+# Get grid position name (chess notation if enabled)
+func get_grid_name(grid_pos: Vector2) -> String:
+	if grid_to_chess_friendly:
+		return get_valid_chess_notation(grid_pos)
 	else:
-		print("GridManager: Starting tile highlight is NOT active, forcing it...")
-		if grid_visualizer and grid_visualizer.has_method("force_set_starting_tile"):
-			grid_visualizer.force_set_starting_tile(start_pos)
-		else:
-			print("GridManager: Can't force starting tile highlight - visualizer not found or missing method")
+		return str(grid_pos)
 
-# Main coordinator function for generating grid objects (delegated to registry)
-func generate_grid_objects():
-	object_registry.generate_grid_objects()
+## --------- Player Reference and Management ---------
 
-# Helper to check if property exists
-func has_property(property_name: String) -> bool:
-	return get(property_name) != null
+# Delegated functions to player movement handler
+
+# Expose movement handler functions
+func add_player_to_grid() -> Node:
+	return movement_handler.add_player_to_grid()
+
+func set_player_immobilized(immobilized: bool = true) -> void:
+	movement_handler.set_player_immobilized(immobilized)
+
+func get_player_state() -> String:
+	return movement_handler.get_player_state()
+
+func is_player_on_starting_tile() -> bool:
+	return movement_handler.is_player_on_starting_tile()
+
+func find_gridlocked_path(start_pos: Vector2, end_pos: Vector2, max_distance: int) -> Array:
+	return movement_handler.find_gridlocked_path(start_pos, end_pos, max_distance)
+
+func is_tile_passable(grid_pos: Vector2) -> bool:
+	return movement_handler.is_tile_passable(grid_pos)
+
+func is_position_reachable(start_pos: Vector2, target_pos: Vector2, max_distance: int) -> bool:
+	return movement_handler.is_position_reachable(start_pos, target_pos, max_distance)
+
+func _on_object_visual_changed(object):
+	# Re-register to update visuals when state changes
+	add_grid_object(object, object.grid_position)
 
 # --------- Coordinate Conversion Methods (using Converter) ---------
 
@@ -761,379 +732,47 @@ func get_valid_grid_position(chess_pos: String) -> Vector2:
 func screen_to_chess(screen_pos: Vector2) -> String:
 	return coord_converter.screen_to_chess(screen_pos)
 
-func _on_object_visual_changed(object):
-	# Re-register to update visuals when state changes
-	add_grid_object(object, object.grid_position)
-
-# --------- Player Movement State Machine ---------
-
-# Reference to player movement state machine
-var movement_state_machine = null
-
-# Initialize the movement state machine
-func initialize_movement_state_machine():
-	if not movement_state_machine:
-		movement_state_machine = load("res://core/player/player_movement_state_machine.gd").new(self)
-		print("Movement state machine initialized")
-	return movement_state_machine
-
-# Get reference to movement state machine (creating if needed)
-func get_movement_state_machine():
-	if not movement_state_machine:
-		initialize_movement_state_machine()
-	return movement_state_machine
-
-# --------- Path Finding and Visualization ---------
-
-# Find a path that follows grid rules (only allows X/Y movement, not diagonal)
-func find_gridlocked_path(start_pos: Vector2, end_pos: Vector2, max_distance: int) -> Array:
-	# Ensure we're working with integer coordinates
-	start_pos = Vector2(int(start_pos.x), int(start_pos.y))
-	end_pos = Vector2(int(end_pos.x), int(end_pos.y))
-	
-	# If start and end are the same, return empty path
-	if start_pos == end_pos:
-		return []
-	
-	# Check if target tile is passable first
-	if not is_tile_passable(end_pos):
-		print("Target position is not passable: ", end_pos, " (", grid_to_chess(end_pos), ")")
-		return []
-		
-	# Calculate Manhattan distance
-	var manhattan_distance = abs(end_pos.x - start_pos.x) + abs(end_pos.y - start_pos.y)
-	
-	# Check if destination is beyond movement range
-	if manhattan_distance > max_distance:
-		print("Path exceeds max distance: ", manhattan_distance, " > ", max_distance)
-		return []
-	
-	# Debug output
-	var start_chess = grid_to_chess(start_pos)
-	var end_chess = grid_to_chess(end_pos)
-	print("Finding path from %s(%s) to %s(%s), max distance: %d" % [str(start_pos), start_chess, str(end_pos), end_chess, max_distance])
-	
-	# Simple path along X then Y
-	var path = []
-	var current = start_pos
-	
-	# First move along X axis
-	while current.x != end_pos.x:
-		var step = 1 if end_pos.x > current.x else -1
-		current.x += step
-		
-		# Create the potential new position
-		var next_pos = Vector2(current.x, current.y)
-		
-		# Check if position is valid (not blocked)
-		if is_valid_grid_position(next_pos) and is_tile_passable(next_pos):
-			path.append(next_pos)
-			print("Added X step: %s (%s)" % [str(next_pos), grid_to_chess(next_pos)])
-		else:
-			# Try Y-first approach instead
-			print("X-first approach blocked at %s (%s), trying Y-first" % [str(next_pos), grid_to_chess(next_pos)])
-			path = []
-			current = start_pos
-			break
-	
-	# If X-first approach failed or wasn't completed, try Y-first
-	if path.size() == 0 or current.y != end_pos.y:
-		# If we already have a partial X path, continue with Y movement
-		if path.size() > 0:
-			# Continue Y movement from current X position
-			while current.y != end_pos.y:
-				var step = 1 if end_pos.y > current.y else -1
-				current.y += step
-				
-				# Create the potential new position
-				var next_pos = Vector2(current.x, current.y)
-				
-				# Check if position is valid (not blocked)
-				if is_valid_grid_position(next_pos) and is_tile_passable(next_pos):
-					path.append(next_pos)
-					print("Added Y step (after X): %s (%s)" % [str(next_pos), grid_to_chess(next_pos)])
-				else:
-					# Path was valid until now but got blocked
-					print("Y movement blocked at %s (%s) after X movement, path failed" % [str(next_pos), grid_to_chess(next_pos)])
-					return []
-		else:
-			# Try Y-first approach from scratch
-			current = start_pos
-			
-			# Move along Y axis first
-			while current.y != end_pos.y:
-				var step = 1 if end_pos.y > current.y else -1
-				current.y += step
-				
-				# Create the potential new position
-				var next_pos = Vector2(current.x, current.y)
-				
-				# Check if position is valid (not blocked)
-				if is_valid_grid_position(next_pos) and is_tile_passable(next_pos):
-					path.append(next_pos)
-					print("Added Y step: %s (%s)" % [str(next_pos), grid_to_chess(next_pos)])
-				else:
-					# Both approaches failed, no valid path
-					print("Y-first approach blocked at %s (%s), no valid path" % [str(next_pos), grid_to_chess(next_pos)])
-					return []
-			
-			# Then move along X axis
-			while current.x != end_pos.x:
-				var step = 1 if end_pos.x > current.x else -1
-				current.x += step
-				
-				# Create the potential new position
-				var next_pos = Vector2(current.x, current.y)
-				
-				# Check if position is valid (not blocked)
-				if is_valid_grid_position(next_pos) and is_tile_passable(next_pos):
-					path.append(next_pos)
-					print("Added X step (after Y): %s (%s)" % [str(next_pos), grid_to_chess(next_pos)])
-				else:
-					# No valid path
-					print("X movement blocked at %s (%s) after Y movement, path failed" % [str(next_pos), grid_to_chess(next_pos)])
-					return []
-	
-	# Ensure the path doesn't exceed max distance
-	if path.size() > max_distance:
-		print("Path found but exceeds max distance, trimming to %d steps" % max_distance)
-		path = path.slice(0, max_distance)
-	
-	print("Final path: %s" % str(path))
-	return path
-
-# Check if a tile can be moved to
-func is_tile_passable(grid_pos: Vector2) -> bool:
-	# Get object at position
-	var object_data = get_grid_object(grid_pos)
-	
-	# If no object, tile is passable
-	if not object_data:
-		return true
-	
-	# Check if object is in impassable_tiles list
-	if impassable_tiles.has(grid_pos):
-		return false
-		
-	# If it's a terrain object, check its passable property
-	if object_data.type == "terrain" and object_data.object and object_data.object.has_method("get_is_passable"):
-		return object_data.object.get_is_passable()
-	
-	# Default to passable for other objects (like POIs)
-	return true
-
-# Update path visualization on the grid
+# Add forwarding functions for path visualization
 func update_path_visualization(path: Array) -> void:
-	# Clear any existing path highlights
-	clear_movement_range()
+	# Update path visualization directly in grid_visualizer
+	if grid_visualizer:
+		grid_visualizer.visualize_path(path)
 	
-	# Skip if path is empty
-	if path.size() == 0:
-		return
-	
-	# Create highlights for valid path tiles
-	for i in range(path.size()):
-		var grid_pos = path[i]
-		
-		# Only highlight if the tile is passable
-		if is_tile_passable(grid_pos):
-			var highlight_id = "path_" + str(i)
-			var highlight_color = Color(0.2, 0.7, 0.9, 0.4)
-			
-			# Highlight grid tile
-			if grid_visualizer:
-				grid_visualizer._add_highlight(grid_pos, highlight_color, Color.TRANSPARENT, highlight_id)
-		else:
-			print("Skipping highlighting impassable tile at: ", grid_pos)
-	
-	# Emit signal for path calculation
-	emit_signal("path_calculated", path)
+	# Emit signal for any other systems needing path information
+	if signal_manager:
+		signal_manager.emit_signal("path_calculated", path)
+	else:
+		emit_signal("path_calculated", path)
 
-# Clear movement range visualization
 func clear_movement_range() -> void:
-	if grid_visualizer:
-		for i in range(50): # Clear up to 50 path tiles (arbitrary limit)
-			var highlight_id = "path_" + str(i)
-			grid_visualizer._remove_highlight(highlight_id)
+	movement_handler.clear_movement_range()
 
-# Show target highlight for selected destination
 func show_target_highlight(grid_pos: Vector2) -> void:
-	if grid_visualizer:
-		var highlight_id = "target_highlight"
-		var highlight_color = Color(0.9, 0.2, 0.2, 0.6)
-		grid_visualizer._add_highlight(grid_pos, highlight_color, Color.RED, highlight_id)
+	movement_handler.show_target_highlight(grid_pos)
 
-# Clear target highlight
 func clear_target_highlight() -> void:
+	movement_handler.clear_target_highlight()
+
+# Set the starting tile and update visualizer directly
+func set_starting_tile(grid_pos: Vector2) -> void:
+	if not is_valid_grid_position(grid_pos):
+		push_error("Invalid grid position for starting tile: ", grid_pos)
+		return
+	
+	print("GridManager: Setting starting tile at: ", grid_pos)
+	
+	# Update configuration
+	if configuration:
+		configuration.player_starting_tile = get_valid_chess_notation(grid_pos)
+	
+	# Update visualizer directly
 	if grid_visualizer:
-		grid_visualizer._remove_highlight("target_highlight")
-
-# Get grid position name (chess notation if enabled)
-func get_grid_name(grid_pos: Vector2) -> String:
-	if grid_to_chess_friendly:
-		return get_valid_chess_notation(grid_pos)
+		grid_visualizer.force_set_starting_tile(grid_pos)
+	
+	# Emit signal for other listeners
+	if signal_manager:
+		signal_manager.emit_signal("starting_tile_added", grid_pos)
 	else:
-		return str(grid_pos)
-
-# Add these input handlers to connect with the movement state machine
-
-# Handle grid_mouse_hover signal for player movement
-func _on_grid_mouse_hover(grid_pos: Vector2):
-	# Update grid manager hover tracking
-	hover_grid_pos = grid_pos
-	hover_chess_pos = grid_to_chess(grid_pos)
+		emit_signal("starting_tile_added", grid_pos)
 	
-	print("GridManager: Processing grid_mouse_hover at ", grid_pos, " (", hover_chess_pos, ")")
-	
-	# If player is moving, don't process hover
-	if player_is_moving:
-		print("GridManager: Ignoring hover because player is currently moving")
-		return
-	
-	# Get movement state machine
-	var state_machine = get_movement_state_machine()
-	if state_machine:
-		# Get current state as string for debugging
-		var current_state_str = state_machine._state_to_string(state_machine.current_state)
-		
-		# Transition to HOVER state if we're in IDLE or already in HOVER
-		if state_machine.current_state == state_machine.MovementState.IDLE or \
-		   state_machine.current_state == state_machine.MovementState.HOVER:
-			if state_machine.current_state != state_machine.MovementState.HOVER:
-				print("GridManager: Transitioning to HOVER state from ", current_state_str)
-			var success = state_machine.transition_to(state_machine.MovementState.HOVER, {"hover_pos": grid_pos})
-			if not success:
-				print("GridManager: Failed to transition to HOVER state")
-		else:
-			print("GridManager: Not transitioning to HOVER state from current state: ", current_state_str)
-	else:
-		print("GridManager: Error - Movement state machine not found!")
-
-# Handle grid_mouse_exit signal
-func _on_grid_mouse_exit():
-	# Clear hover tracking
-	hover_grid_pos = Vector2(-1, -1)
-	hover_chess_pos = ""
-	
-	# Get movement state machine
-	var state_machine = get_movement_state_machine()
-	if state_machine:
-		# If we're in HOVER state, go back to IDLE
-		if state_machine.current_state == state_machine.MovementState.HOVER:
-			state_machine.transition_to(state_machine.MovementState.IDLE)
-
-# Handle grid_tile_clicked signal
-func _on_grid_tile_clicked(grid_pos: Vector2):
-	# Update target tracking
-	target_grid_pos = grid_pos
-	target_chess_pos = grid_to_chess(grid_pos)
-	
-	print("GridManager: Processing grid_tile_clicked at ", grid_pos, " (", target_chess_pos, ")")
-	
-	# If player is moving, don't process click
-	if player_is_moving:
-		print("GridManager: Ignoring click because player is currently moving")
-		return
-	
-	# Check if we have a player instance
-	if not player_instance:
-		print("GridManager: Error - Player instance not found!")
-		return
-	
-	# Get movement state machine
-	var state_machine = get_movement_state_machine()
-	if state_machine:
-		# Get current state as string for debugging
-		var current_state_str = state_machine._state_to_string(state_machine.current_state)
-		
-		print("GridManager: Current movement state before click: ", current_state_str)
-		
-		# Only process click if we're in HOVER or IDLE state
-		if state_machine.current_state == state_machine.MovementState.HOVER or \
-		   state_machine.current_state == state_machine.MovementState.IDLE:
-			print("GridManager: Transitioning to PATH_PLANNED state")
-			var success = state_machine.transition_to(state_machine.MovementState.PATH_PLANNED, {"target_pos": grid_pos})
-			print("GridManager: Transition success: ", success)
-		else:
-			print("GridManager: Cannot transition to PATH_PLANNED from current state: ", current_state_str)
-	else:
-		print("GridManager: Error - Movement state machine not found!")
-
-# Set up signal connections for player movement
-func connect_movement_signals():
-	if player_instance:
-		if not player_instance.is_connected("movement_completed", _on_player_movement_completed):
-			player_instance.connect("movement_completed", _on_player_movement_completed)
-
-# Handler for player movement completed
-func _on_player_movement_completed():
-	# Get movement state machine
-	var state_machine = get_movement_state_machine()
-	if state_machine:
-		# Transition to MOVEMENT_COMPLETED state
-		state_machine.transition_to(state_machine.MovementState.MOVEMENT_COMPLETED)
-
-# Check if a target position is reachable within the movement range
-func is_position_reachable(start_pos: Vector2, target_pos: Vector2, max_distance: int) -> bool:
-	# Calculate Manhattan distance
-	var manhattan_distance = abs(target_pos.x - start_pos.x) + abs(target_pos.y - start_pos.y)
-	
-	# Check if distance is within range
-	if manhattan_distance > max_distance:
-		var start_chess = grid_to_chess(start_pos)
-		var target_chess = grid_to_chess(target_pos)
-		print("Position %s (%s) is too far from %s (%s): %d > %d" %
-			[str(target_pos), target_chess, str(start_pos), start_chess, manhattan_distance, max_distance])
-		return false
-	
-	# Check if there's a valid path
-	var path = find_gridlocked_path(start_pos, target_pos, max_distance)
-	var has_path = path.size() > 0
-	
-	# Debug output
-	if not has_path:
-		var start_chess = grid_to_chess(start_pos)
-		var target_chess = grid_to_chess(target_pos)
-		print("No valid path from %s (%s) to %s (%s)" %
-			[str(start_pos), start_chess, str(target_pos), target_chess])
-	
-	return has_path
-
-# --------- Player State Control ---------
-
-# Set the player to immobilized state
-func set_player_immobilized(immobilized: bool = true) -> void:
-	var state_machine = get_movement_state_machine()
-	if state_machine and state_machine.has_method("set_immobile"):
-		state_machine.set_immobile(immobilized)
-		print("Player immobilized state set to: %s" % immobilized)
-	else:
-		print("Failed to set player immobilized state: State machine not found or missing method")
-
-# Get the current player state
-func get_player_state() -> String:
-	if player_instance and player_instance.has_method("get_player_state"):
-		return player_instance.get_player_state()
-	
-	# If player has a state property, return it
-	if player_instance and player_instance.get("player_state"):
-		return player_instance.player_state
-	
-	# Otherwise get it from the state machine
-	var state_machine = get_movement_state_machine()
-	if state_machine:
-		return state_machine._state_to_string(state_machine.current_state)
-	
-	return "UNKNOWN"
-
-# Check if player is on the starting tile
-func is_player_on_starting_tile() -> bool:
-	if player_instance and player_instance.has_method("check_if_on_starting_tile"):
-		return player_instance.check_if_on_starting_tile()
-	
-	# Otherwise calculate manually
-	if player_instance:
-		var start_pos = get_valid_grid_position(player_starting_tile)
-		return player_instance.grid_position == start_pos
-	
-	return false
+	print("GridManager: Starting tile set at: ", grid_pos)
