@@ -286,7 +286,6 @@ func add_player_to_grid() -> Node:
 			print("ERROR: GridVisualizer still not found!")
 	
 	# Set the starting tile using the dedicated method
-	print("GridManager: Setting starting tile at position: ", start_pos)
 	grid_manager.set_starting_tile(start_pos)
 	
 	# Instantiate player scene instead of creating a new class instance

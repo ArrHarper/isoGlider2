@@ -53,15 +53,10 @@ func _ready():
 	if !grid_manager or !grid_manager.has_method("grid_to_screen"):
 		push_error("GridVisualizer: Parent is not a valid GridManager!")
 		return
-		
-	# Connect signals for compatibility with existing code
-	# This preserves compatibility while we transition to direct method calls
-	print("GridVisualizer: Connecting signals in _ready() for backward compatibility")
-	
 	# Connect essential signals DIRECTLY from GridManager first
 	# This ensures signals are connected regardless of SignalManager
 	if grid_manager and grid_manager.has_signal("starting_tile_added"):
-		print("GridVisualizer: Directly connecting to GridManager starting_tile_added")
+		# print("GridVisualizer: Directly connecting to GridManager starting_tile_added")
 		if !grid_manager.is_connected("starting_tile_added", Callable(self, "_on_starting_tile_added")):
 			grid_manager.connect("starting_tile_added", Callable(self, "_on_starting_tile_added"))
 	
@@ -84,7 +79,7 @@ func _ready():
 		print("GridVisualizer: SignalManager not found! Direct method calls required.")
 	
 	# Debug
-	print("GridVisualizer initialized. Using direct method calls where possible.")
+	print("GridVisualizer initialized.")
 
 func _setup_layers():
 	# Clean up any existing layers first
@@ -304,7 +299,6 @@ func update_grid_position(grid_pos: Vector2) -> void:
 	
 	# Skip visual creation for player objects since they're now instantiated as scenes
 	if object.object_type == "player":
-		print("GridVisualizer: Skipping player visualization at ", grid_pos)
 		return
 		
 	# Get visual properties directly from the object
@@ -395,11 +389,8 @@ func refresh_all_visuals() -> void:
 
 # Handler for starting_tile_added signal
 func _on_starting_tile_added(grid_pos: Vector2) -> void:
-	print("GridVisualizer: _on_starting_tile_added called with position: ", grid_pos)
-	
 	# Clear any existing starting tile visuals
 	if starting_tile_position != Vector2(-1, -1):
-		print("GridVisualizer: Clearing existing starting tile visuals at: ", starting_tile_position)
 		clear_position_visuals(starting_tile_position)
 		if starting_tile_highlight_id != "":
 			remove_highlight(starting_tile_highlight_id)
@@ -431,14 +422,12 @@ func _on_starting_tile_added(grid_pos: Vector2) -> void:
 				border_color = starting_tile_immobilized_border_color
 		
 		starting_tile_highlight_id = add_highlight(starting_tile_position, color, border_color, "starting_tile")
-		print("GridVisualizer: Retry - Starting tile highlight created with ID: ", starting_tile_highlight_id)
 	else:
-		print("GridVisualizer: Starting tile highlight successfully created with ID: ", starting_tile_highlight_id)
+		# Starting tile highlight was successfully created
+		pass
 
 # Update the starting tile highlight based on current game state
 func update_starting_tile_highlight() -> void:
-	print("GridVisualizer: Updating starting tile highlight. Position: ", starting_tile_position)
-	
 	# Skip if no valid starting position is set
 	if starting_tile_position == Vector2(-1, -1):
 		print("GridVisualizer: No valid starting tile position set")
@@ -446,7 +435,6 @@ func update_starting_tile_highlight() -> void:
 	
 	# Clear any existing highlight first
 	if starting_tile_highlight_id != "":
-		print("GridVisualizer: Removing existing highlight with ID: ", starting_tile_highlight_id)
 		remove_highlight(starting_tile_highlight_id)
 		starting_tile_highlight_id = ""
 	
@@ -464,7 +452,6 @@ func update_starting_tile_highlight() -> void:
 	
 	# Add the highlight
 	starting_tile_highlight_id = add_highlight(starting_tile_position, color, border_color, "starting_tile")
-	print("GridVisualizer: Updated starting tile highlight with ID: ", starting_tile_highlight_id)
 
 # Handler for player state changes to update starting tile highlight
 func _on_player_state_changed(player_id: int, state: String, is_on_starting_tile: bool):
@@ -511,8 +498,7 @@ func _create_iso_polygon(center: Vector2 = Vector2.ZERO, scale_factor: float = 1
 
 # Force set starting tile (can be called from other scripts)
 func force_set_starting_tile(grid_pos: Vector2) -> void:
-	print("GridVisualizer: Force setting starting tile at: ", grid_pos)
-	
+	# print("GridVisualizer: Force setting starting tile at: ", grid_pos)
 	# Clear any existing starting tile visuals
 	if starting_tile_position != Vector2(-1, -1):
 		clear_position_visuals(starting_tile_position)

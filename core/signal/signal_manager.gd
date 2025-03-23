@@ -71,8 +71,8 @@ func connect_signal(signal_name: String, target: Object, method: String,
 	var result = connect(signal_name, callable_target)
 	if result != OK:
 		push_error("SignalManager: Failed to connect signal: " + signal_name + " Error: " + str(result))
-	else:
-		print("Successfully connected signal: " + signal_name + " to " + target.get_name() + "." + method)
+	# else:
+	# 	print("Successfully connected signal: " + signal_name + " to " + target.get_name() + "." + method)
 	
 	# Track connection for debugging
 	if not _registered_listeners.has(signal_name):
@@ -94,7 +94,7 @@ func disconnect_signal(signal_name: String, target: Object, method: String) -> v
 			for i in range(_registered_listeners[signal_name].size()):
 				var listener = _registered_listeners[signal_name][i]
 				if listener.target == target and listener.method == method:
-					_registered_listeners[signal_name].remove(i)
+					_registered_listeners[signal_name].remove_at(i)
 					break
 
 # Helper method to get all registered listeners

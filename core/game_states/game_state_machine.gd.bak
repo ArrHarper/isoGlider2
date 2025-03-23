@@ -1,0 +1,121 @@
+# core/game_states/game_state_machine.gd
+class_name GameStateMachine
+extends Node
+
+# Enum to easily reference states
+enum States {MAIN_MENU, GAME_LOADING, GAME_READY, ROUND_START,
+param($m) $m.Groups[1].Value -replace " ", "`t"GAME_ACTIVE, GAME_PAUSED, ROUND_WON, ROUND_RESTARTING, GAME_OVER}
+
+# State instances
+var states = {}
+var current_state_id: States = States.MAIN_MENU
+var current_state: GameState = null
+var previous_state_id: States = States.MAIN_MENU
+var signal_manager = null
+var game_mode = null
+var grid_manager = null
+
+# Flag to track initialization
+var is_initialized: bool = false
+
+func _ready():
+param($m) $m.Groups[1].Value -replace " ", "`t"print("GameStateMachine: Ready")
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# We'll delay initialization until explicitly called
+param($m) $m.Groups[1].Value -replace " ", "`t"# This prevents timing issues with other systems
+
+# Initialize the state machine
+func initialize(grid_mgr) -> void:
+param($m) $m.Groups[1].Value -replace " ", "`t"if is_initialized:
+param($m) $m.Groups[1].Value -replace " ", "`t"return
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"print("GameStateMachine: Initializing")
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Store grid manager reference
+param($m) $m.Groups[1].Value -replace " ", "`t"grid_manager = grid_mgr
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Create state instances
+param($m) $m.Groups[1].Value -replace " ", "`t"states[States.MAIN_MENU] = load("res://core/game_states/main_menu_state.gd").new()
+param($m) $m.Groups[1].Value -replace " ", "`t"states[States.GAME_LOADING] = load("res://core/game_states/game_loading_state.gd").new()
+param($m) $m.Groups[1].Value -replace " ", "`t"# ... etc for other states
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Initialize states
+param($m) $m.Groups[1].Value -replace " ", "`t"for state_id in states:
+param($m) $m.Groups[1].Value -replace " ", "`t"states[state_id].state_machine = self
+param($m) $m.Groups[1].Value -replace " ", "`t"states[state_id].grid_manager = grid_manager
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Get signal manager
+param($m) $m.Groups[1].Value -replace " ", "`t"signal_manager = get_node_or_null("/root/SignalManager")
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Get current mode from ModeManager
+param($m) $m.Groups[1].Value -replace " ", "`t"var mode_manager = get_node_or_null("/root/ModeManager")
+param($m) $m.Groups[1].Value -replace " ", "`t"if mode_manager:
+param($m) $m.Groups[1].Value -replace " ", "`t"game_mode = mode_manager.get_mode()
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"is_initialized = true
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Start with GAME_LOADING state
+param($m) $m.Groups[1].Value -replace " ", "`t"transition_to(States.GAME_LOADING)
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"print("GameStateMachine: Initialized successfully with " + str(states.size()) + " states")
+
+func transition_to(new_state_id: States) -> void:
+param($m) $m.Groups[1].Value -replace " ", "`t"# Don't transition if not initialized
+param($m) $m.Groups[1].Value -replace " ", "`t"if not is_initialized:
+param($m) $m.Groups[1].Value -replace " ", "`t"push_warning("GameStateMachine: Cannot transition states - not initialized")
+param($m) $m.Groups[1].Value -replace " ", "`t"return
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"if current_state:
+param($m) $m.Groups[1].Value -replace " ", "`t"print("GameStateMachine: Exiting state " + States.keys()[current_state_id])
+param($m) $m.Groups[1].Value -replace " ", "`t"current_state.exit()
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Store the previous state ID
+param($m) $m.Groups[1].Value -replace " ", "`t"previous_state_id = current_state_id
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Update the current state
+param($m) $m.Groups[1].Value -replace " ", "`t"current_state_id = new_state_id
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Check if the state exists in our dictionary
+param($m) $m.Groups[1].Value -replace " ", "`t"if not states.has(new_state_id):
+param($m) $m.Groups[1].Value -replace " ", "`t"push_error("GameStateMachine: State " + str(new_state_id) + " does not exist in states dictionary")
+param($m) $m.Groups[1].Value -replace " ", "`t"return
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"current_state = states[new_state_id]
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Pass references to state
+param($m) $m.Groups[1].Value -replace " ", "`t"current_state.game_mode = game_mode
+param($m) $m.Groups[1].Value -replace " ", "`t"current_state.grid_manager = grid_manager
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Enter the new state
+param($m) $m.Groups[1].Value -replace " ", "`t"print("GameStateMachine: Entering state " + States.keys()[new_state_id])
+param($m) $m.Groups[1].Value -replace " ", "`t"current_state.enter()
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Emit state change signal
+param($m) $m.Groups[1].Value -replace " ", "`t"if signal_manager:
+param($m) $m.Groups[1].Value -replace " ", "`t"# Safely get the old state name
+param($m) $m.Groups[1].Value -replace " ", "`t"var old_state_name = "None"
+param($m) $m.Groups[1].Value -replace " ", "`t"if previous_state_id >= 0 and previous_state_id < States.size():
+param($m) $m.Groups[1].Value -replace " ", "`t"old_state_name = States.keys()[previous_state_id]
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"var new_state_name = States.keys()[new_state_id]
+param($m) $m.Groups[1].Value -replace " ", "`t"signal_manager.emit_signal("game_state_changed", old_state_name, new_state_name)
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"print("GameStateMachine: Completed transition to " + States.keys()[new_state_id])
+
+func _process(delta):
+param($m) $m.Groups[1].Value -replace " ", "`t"if is_initialized and current_state:
+param($m) $m.Groups[1].Value -replace " ", "`t"current_state.update(delta)
+param($m) $m.Groups[1].Value -replace " ", "`t"
+func _input(event):
+param($m) $m.Groups[1].Value -replace " ", "`t"if is_initialized and current_state:
+param($m) $m.Groups[1].Value -replace " ", "`t"current_state.handle_input(event)
+param($m) $m.Groups[1].Value -replace " ", "`t"
+# Set the current game mode
+func set_game_mode(mode) -> void:
+param($m) $m.Groups[1].Value -replace " ", "`t"game_mode = mode
+param($m) $m.Groups[1].Value -replace " ", "`t"print("GameStateMachine: Game mode set to " + mode.mode_name)
+param($m) $m.Groups[1].Value -replace " ", "`t"
+param($m) $m.Groups[1].Value -replace " ", "`t"# Update game mode for current state
+param($m) $m.Groups[1].Value -replace " ", "`t"if current_state:
+param($m) $m.Groups[1].Value -replace " ", "`t"current_state.game_mode = game_mode
+
