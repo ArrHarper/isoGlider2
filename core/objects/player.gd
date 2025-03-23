@@ -153,12 +153,15 @@ func _complete_movement():
 			print("Player moved from ", old_grid_pos, " to ", current_grid_pos)
 			SignalManager.emit_signal("grid_object_removed", "player", old_grid_pos)
 			SignalManager.emit_signal("grid_object_added", "player", current_grid_pos)
+			
+			# Print updated positions in both grid and chess notation
+			var chess_pos = grid_manager.grid_to_chess(current_grid_pos) if grid_manager.has_method("grid_to_chess") else "unknown"
+			print("Updated player's position to: %s (%s)" % [current_grid_pos, chess_pos])
 		
-		# Print updated positions in both grid and chess notation
-		var chess_pos = grid_manager.grid_to_chess(current_grid_pos) if grid_manager.has_method("grid_to_chess") else "unknown"
-		print("Updated player's position to: %s (%s)" % [current_grid_pos, chess_pos])
+		# IMPORTANT: Check for POIs at the new position *after* player position is fully updated
+		check_for_poi_at_position(current_grid_pos, grid_manager)
 		
-		# Check if player is on starting tile and update state accordingly
+		# Check if player is on starting tile and update state accordingly 
 		check_if_on_starting_tile()
 	
 	# Clear movement path
@@ -176,10 +179,62 @@ func _log_intermediate_position():
 	var grid_manager = get_node_or_null("/root/Main/GridManager")
 	if grid_manager:
 		var current_pos = grid_manager.screen_to_grid(position)
-		current_grid_pos = current_pos
 		
-		var chess_pos = grid_manager.grid_to_chess(current_pos) if grid_manager.has_method("grid_to_chess") else "unknown"
-		print("Intermediate position: %s (%s)" % [current_pos, chess_pos])
+		# Only check for POI if position has changed
+		if current_pos != current_grid_pos:
+			# Update the current position FIRST
+			var old_pos = current_grid_pos
+			current_grid_pos = current_pos
+			
+			# DEBUG: Track position changes
+			var chess_pos = grid_manager.grid_to_chess(current_pos) if grid_manager.has_method("grid_to_chess") else "unknown"
+			print("Intermediate position: %s (%s)" % [current_pos, chess_pos])
+			
+			# Check for POIs at each intermediate position BEFORE announcing movement
+			check_for_poi_at_position(current_grid_pos, grid_manager)
+			
+			# Now announce movement for grid tracking
+			if old_pos != current_grid_pos:
+				SignalManager.emit_signal("grid_object_removed", "player", old_pos)
+				SignalManager.emit_signal("grid_object_added", "player", current_grid_pos)
+
+# Check for POIs at the player's current position and collect them
+func check_for_poi_at_position(grid_pos: Vector2, grid_manager):
+	if not grid_manager:
+		return
+		
+	# Get object at player's position using the grid manager
+	var object_data = grid_manager.get_grid_object(grid_pos)
+	
+	# If there's no object, exit early
+	if not object_data:
+		return
+		
+	# Check if the object is a POI
+	if object_data.type == "poi" and object_data.object:
+		var poi_object = object_data.object
+		
+		# Make sure it's a valid POI class instance
+		if poi_object is POI:
+			# Check if it's not already collected
+			if not poi_object.is_collected():
+				# Collect the POI
+				var reward = poi_object.collect()
+				
+				# Add reward to player's score
+				score += reward
+				
+				print("Player collected POI at %s (%s) with value %d. New score: %d" %
+					[grid_pos, grid_manager.grid_to_chess(grid_pos), reward, score])
+					
+				# Emit player-specific signal for collected POI
+				SignalManager.emit_signal("player_collected_poi", poi_object.poi_id, reward)
+				
+				# Force the grid manager to update visuals at this position immediately
+				if grid_manager.has_node("GridVisualizer"):
+					var visualizer = grid_manager.get_node("GridVisualizer")
+					visualizer.update_grid_position(grid_pos)
+					visualizer._clear_position_visuals(grid_pos) # Ensure visuals are cleared
 
 # Set player state and emit signal
 func set_player_state(new_state: String):
@@ -190,6 +245,13 @@ func set_player_state(new_state: String):
 	
 	# Update state
 	player_state = new_state
+	
+	# If state changed to MOVEMENT_COMPLETED, immediately check for POIs at current position
+	if new_state == "MOVEMENT_COMPLETED":
+		var grid_manager = get_node_or_null("/root/Main/GridManager")
+		if grid_manager:
+			# Ensure we check for and collect POIs immediately when movement completes
+			check_for_poi_at_position(current_grid_pos, grid_manager)
 	
 	# Check if on starting tile for special state handling
 	var is_on_starting_tile = check_if_on_starting_tile()

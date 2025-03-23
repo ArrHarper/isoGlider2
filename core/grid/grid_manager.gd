@@ -508,6 +508,31 @@ func remove_grid_object(grid_pos: Vector2, emit_signal: bool = true) -> void:
 		if emit_signal:
 			emit_signal("grid_object_removed", object_type, grid_pos)
 
+# Remove object from grid with forced visual update
+func forcefully_clear_grid_object(grid_pos: Vector2, emit_signal: bool = true) -> void:
+	if grid_objects.has(grid_pos):
+		# Store object type for signal if needed
+		var object_type = ""
+		if emit_signal:
+			object_type = grid_objects[grid_pos].type
+		
+		# Debug output
+		print("Forcefully clearing grid object at position ", grid_pos, " of type ", object_type)
+		
+		# Remove from grid tracking
+		grid_objects.erase(grid_pos)
+		
+		# Force immediate visual update
+		if grid_visualizer:
+			# Clear visuals completely
+			grid_visualizer._clear_position_visuals(grid_pos)
+			# Then update the position after clearing
+			grid_visualizer.update_grid_position(grid_pos)
+		
+		# Emit signal if requested
+		if emit_signal:
+			emit_signal("grid_object_removed", object_type, grid_pos)
+
 func center_grid_in_viewport():
 	# Calculate center tile of the grid
 	var center_tile = Vector2(grid_size_x / 2.0, grid_size_y / 2.0)
